@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+import sys
+import re
+import string
+
+all_chains = {	'raw':	    {'PREROUTING':list(), 'OUTPUT':list()},
+		'filter':   {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
+		'nat':	    {'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
+		'mangle':   {'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()}}
+
+defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
+
+input_string = sys.stdin.read()
+line_list = input_string.splitlines()
+current_table = None
+for line in line_list:
+    token_list = line.split()
+    if token_list[0] in ['*nat', '*filter', '*mangle']:
+	current_table = token_list[0][1:]
+	continue
+
+    if token_list[0] == '-A':
+	current_chain = token_list[1]
+	if current_chain not in all_chains[current_table]:
+	    all_chains[current_table][current_chain] = list()
+
+	rule_body = ''
+	target = ''
+	if token_list[-2] == '-j' and token_list[-1] not in ['RETURN', 'ACCEPT', 'DROP']:
+	    target = token_list[-1]
+	    if target not in all_chains[current_table]:
+		all_chains[current_table][target] = list()
+	    rule_body = ' '.join(token_list[2:])
+	else:
+	    rule_body = ' '.join(token_list[2:])
+
+	all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target})
+	continue
+    else:
+	continue
+
+
+def get_node_name(table_name, chain_name):
+    return re.sub('[^a-zA-Z0-9]', '', table_name) + '_' + re.sub('[^a-zA-Z0-9]', '', chain_name)
+
+def get_port_name(rule_index):
+    return "rule_" + str(rule_index)
+
+output="""digraph {
+    graph [pad="0.5", nodesep="0.5", ranksep="2"];
+    node [shape=plain]
+    rankdir=LR;
+
+"""
+for table in all_chains:
+    for chain in all_chains[table]:
+	node_name = get_node_name(table, chain)
+	tmp_body = node_name + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
+	if chain in defualt_chain_list:
+	    tmp_body +="""
+  <tr><td bgcolor="red"><i>""" + chain + """</i></td></tr>
+  <tr><td port="begin" bgcolor="tomato"><i>""" + table + """</i></td></tr>"""
+	else:
+	    tmp_body +="""
+  <tr><td><i>""" + chain + """</i></td></tr>
+  <tr><td port="begin"><i>""" + table + """</i></td></tr>"""
+	for i in range(len(all_chains[table][chain])):
+	    rule = all_chains[table][chain][i]
+	    tmp_body += """
+  <tr><td port="""
+	    tmp_body += "\"" + get_port_name(i) + "\""
+	    tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
+	    #tmp_body += """></td></tr>"""
+	tmp_body += """
+  <tr><td port="end">end</td></tr>
+</table>>];
+"""
+	output += tmp_body
+
+for table in all_chains:
+    for chain in all_chains[table]:
+	for i in range(len(all_chains[table][chain])):
+	    rule = all_chains[table][chain][i]
+	    if rule['target']:
+		source_node = get_node_name(table, chain) + ':' + get_port_name(i)
+		target_node = get_node_name(table, rule['target']) + ':begin'
+		output += source_node + """ -> """ + target_node + """;
+"""
+
+def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain_name):
+    source_node = get_node_name(src_table_name, src_chain_name) + ':end'
+    target_node = get_node_name(dst_table_name, dst_chain_name) + ':begin'
+    return source_node + """ -> """ + target_node + """ [color=red];
+"""
+
+output += default_chain_link('raw',	'PREROUTING',	'mangle',   'PREROUTING')
+output += default_chain_link('mangle',	'PREROUTING',	'nat',	    'PREROUTING')
+output += default_chain_link('nat',	'PREROUTING',	'mangle',   'INPUT')
+output += default_chain_link('mangle',	'INPUT',	'filter',   'INPUT')
+output += default_chain_link('filter',	'INPUT',	'raw',	    'OUTPUT')
+output += default_chain_link('raw',	'OUTPUT',	'mangle',   'OUTPUT')
+output += default_chain_link('mangle',	'OUTPUT',	'nat',	    'OUTPUT')
+output += default_chain_link('nat',	'OUTPUT',	'filter',   'OUTPUT')
+output += default_chain_link('filter',	'OUTPUT',	'mangle',   'POSTROUTING')
+output += default_chain_link('mangle',	'POSTROUTING',	'nat',	    'POSTROUTING')
+output += default_chain_link('nat',	'PREROUTING',	'mangle',   'FORWARD')
+output += default_chain_link('mangle',	'FORWARD',	'filter',   'FORWARD')
+output += default_chain_link('filter',	'FORWARD',	'mangle',   'POSTROUTING')
+
+output += """
+}"""
+print output
