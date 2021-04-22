@@ -26,3 +26,6 @@ Generate iptables graph to svg file.
 $ cat example.txt | ./iptables-graph > a.dot
 $ dot -Tsvg a.dot -o a.svg
 ```
+
+### Example Graph
+![example.svg](https://raw.githubusercontent.com/AChingYo/iptables-graph/main/example.svg)
