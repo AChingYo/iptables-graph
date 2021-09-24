@@ -15,10 +15,9 @@ line_list = input_string.splitlines()
 current_table = None
 for line in line_list:
     token_list = line.split()
-    if token_list[0] in ['*nat', '*filter', '*mangle']:
+    if token_list[0][1:] in all_chains.keys():
         current_table = token_list[0][1:]
         continue
-
     if token_list[0] == '-A':
         current_chain = token_list[1]
         if current_chain not in all_chains[current_table]:
