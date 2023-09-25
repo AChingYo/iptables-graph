@@ -45,30 +45,43 @@ def get_node_name(table_name, chain_name):
 def get_port_name(rule_index):
     return "rule_" + str(rule_index)
 
+
+xml_esc = {
+    re.compile('&') : '&amp;' ,
+    re.compile('<') : '&lt;'  ,
+    re.compile('>') : '&gt;'  ,
+    re.compile('"') : '&quot;',
+}
+def escape_xml(s):
+    for k, v in xml_esc.items():
+        s = k.sub(v, s)
+    return s
+
 output="""digraph {
     graph [pad="0.5", nodesep="0.5", ranksep="2"];
     node [shape=plain]
     rankdir=LR;
 
 """
+
 for table in all_chains:
     for chain in all_chains[table]:
         node_name = get_node_name(table, chain)
         tmp_body = node_name + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
         if chain in defualt_chain_list:
             tmp_body +="""
-  <tr><td bgcolor="red"><i>""" + chain + """</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>""" + table + """</i></td></tr>"""
+  <tr><td bgcolor="red"><i>""" + escape_xml( chain ) + """</i></td></tr>
+  <tr><td port="begin" bgcolor="tomato"><i>""" + escape_xml( table ) + """</i></td></tr>"""
         else:
             tmp_body +="""
   <tr><td><i>""" + chain + """</i></td></tr>
-  <tr><td port="begin"><i>""" + table + """</i></td></tr>"""
+  <tr><td port="begin"><i>""" + escape_xml( table ) + """</i></td></tr>"""
         for i in range(len(all_chains[table][chain])):
             rule = all_chains[table][chain][i]
             tmp_body += """
   <tr><td port="""
             tmp_body += "\"" + get_port_name(i) + "\""
-            tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
+            tmp_body += """>""" + escape_xml( rule["rule_body"] ) + """</td></tr>"""
             #tmp_body += """></td></tr>"""
         tmp_body += """
   <tr><td port="end">end</td></tr>
