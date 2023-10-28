@@ -13,8 +13,19 @@ defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
 input_string = sys.stdin.read()
 line_list = input_string.splitlines()
 current_table = None
+match_stats = re.compile(r'\s*\[(?P<pkts>\d+):(?P<bytes>\d+)\]\s*')
 for line in line_list:
+    stats = match_stats.search(line)
+    if stats:
+        line = match_stats.sub('', line)
+        stats = '[{}:{}] '.format(stats.group('pkts'), stats.group('bytes'))
+    else:
+        stats = ''
     token_list = line.split()
+    if not token_list :
+        continue
+    if token_list[0][0] in [ '#']:
+        continue
     if token_list[0][1:] in all_chains.keys():
         current_table = token_list[0][1:]
         continue
@@ -23,15 +34,15 @@ for line in line_list:
         if current_chain not in all_chains[current_table]:
             all_chains[current_table][current_chain] = list()
 
-        rule_body = ''
+        rule_body = stats
         target = ''
         if token_list[-2] == '-j' and token_list[-1] not in ['RETURN', 'ACCEPT', 'DROP']:
             target = token_list[-1]
             if target not in all_chains[current_table]:
                 all_chains[current_table][target] = list()
-            rule_body = ' '.join(token_list[2:])
+            rule_body += ' '.join(token_list[2:])
         else:
-            rule_body = ' '.join(token_list[2:])
+            rule_body += ' '.join(token_list[2:])
 
         all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target})
         continue
@@ -81,7 +92,7 @@ for table in all_chains:
             tmp_body += """
   <tr><td port="""
             tmp_body += "\"" + get_port_name(i) + "\""
-            tmp_body += """>""" + escape_xml( rule["rule_body"] ) + """</td></tr>"""
+                tmp_body += """>""" + escape_xml( rule["rule_body"] ) + """</td></tr>"""
             #tmp_body += """></td></tr>"""
         tmp_body += """
   <tr><td port="end">end</td></tr>
