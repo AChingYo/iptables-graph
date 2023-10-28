@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import os
 import re
 import string
 
@@ -68,6 +69,50 @@ def escape_xml(s):
         s = k.sub(v, s)
     return s
 
+
+default_port_ranges = '''
+red=29700:29799,47000:48653,48659,48662,48663,48753,48754,48850:49151,49200:49799
+green=80
+yellow=22
+'''
+
+def expand_port_range(port_range):
+    prange = []
+    for cr in port_range.split(','):
+        r = cr.split(':')
+        if len(r) == 2:
+            prange += range(int(r[0]), int(r[1]) + 1)
+        else:
+            prange = [  int(r[0])  ]
+    return prange
+
+def test_port_range_in_port_range(a, b):
+    for a1 in a:
+        if a1 in b:
+            return True
+    return False
+
+match_port  = re.compile(r'-(?P<type>[ds]ports?)\s+(?P<port>[0-9,:]+)')
+def get_rule_attributes(port_ranges, rule):
+    global match_port
+    m = match_port.search(rule["rule_body"])
+    if m :
+        for me in port_ranges:
+            if test_port_range_in_port_range(me['r'], expand_port_range(m.group('port'))):
+                return ' bgcolor="{}"'.format(me['c'])
+    return ''
+
+def conv_port_range(r):
+    cfilter = []
+    for cline in r.split('\n'):
+        d = cline.split('=', 2)
+        if len(d) != 2:
+            continue
+        cfilter.append({ 'r' : expand_port_range(d[1]), 'c' : d[0] })
+    return cfilter
+
+
+port_ranges = conv_port_range(os.getenv('PORT_RANGE', default=default_port_ranges))
 output="""digraph {
     graph [pad="0.5", nodesep="0.5", ranksep="2"];
     node [shape=plain]
@@ -89,11 +134,7 @@ for table in all_chains:
   <tr><td port="begin"><i>""" + escape_xml( table ) + """</i></td></tr>"""
         for i in range(len(all_chains[table][chain])):
             rule = all_chains[table][chain][i]
-            tmp_body += """
-  <tr><td port="""
-            tmp_body += "\"" + get_port_name(i) + "\""
-                tmp_body += """>""" + escape_xml( rule["rule_body"] ) + """</td></tr>"""
-            #tmp_body += """></td></tr>"""
+            tmp_body += '\n<tr><td port="{}"{}>{}</td></tr>'.format(get_port_name(i), get_rule_attributes(port_ranges, rule), escape_xml( rule["rule_body"] ))
         tmp_body += """
   <tr><td port="end">end</td></tr>
 </table>>];
