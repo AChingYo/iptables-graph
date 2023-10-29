@@ -4,12 +4,22 @@ import os
 import re
 import string
 
-all_chains = {	'raw':	    {'PREROUTING':list(), 'OUTPUT':list()},
+do_ebtables = os.getenv('USE_EBTABLES', default=False)
+if not do_ebtables:
+    all_chains = {	'raw':	    {'PREROUTING':list(), 'OUTPUT':list()},
         'filter':   {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
         'nat':	    {'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
-        'mangle':   {'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()}}
+        'mangle':   {'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()},
+        'security': {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()}}
 
-defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
+else:
+    all_chains = {
+        'filter':   {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
+        'nat':	    {'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
+        'broute':   {'BROUTING':list()}
+        }
+
+defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING', 'BROUTING']
 
 def parse_input(input_string):
     line_list = input_string.splitlines()
@@ -167,19 +177,30 @@ def create_output(all_chains):
         target_node = get_node_name(dst_table_name, dst_chain_name) + ':begin'
         return '{} -> {} [color="{}"]\n'.format(source_node, target_node, colors['chain_link'])
 
-    output += default_chain_link('raw'   ,	'PREROUTING',	'mangle',   'PREROUTING')
-    output += default_chain_link('mangle',	'PREROUTING',	'nat',	    'PREROUTING')
-    output += default_chain_link('nat'   ,	'PREROUTING',	'mangle',   'INPUT')
-    output += default_chain_link('mangle',	'INPUT',	'filter',   'INPUT')
-    output += default_chain_link('filter',	'INPUT',	'raw',	    'OUTPUT')
-    output += default_chain_link('raw'   ,	'OUTPUT',	'mangle',   'OUTPUT')
-    output += default_chain_link('mangle',	'OUTPUT',	'nat',	    'OUTPUT')
-    output += default_chain_link('nat'   ,	'OUTPUT',	'filter',   'OUTPUT')
-    output += default_chain_link('filter',	'OUTPUT',	'mangle',   'POSTROUTING')
-    output += default_chain_link('mangle',	'POSTROUTING',	'nat',	    'POSTROUTING')
-    output += default_chain_link('nat'   ,	'PREROUTING',	'mangle',   'FORWARD')
-    output += default_chain_link('mangle',	'FORWARD',	'filter',   'FORWARD')
-    output += default_chain_link('filter',	'FORWARD',	'mangle',   'POSTROUTING')
+    if not do_ebtables:
+        output += default_chain_link('raw',	'PREROUTING',	'mangle',   'PREROUTING')
+        output += default_chain_link('mangle',	'PREROUTING',	'nat',	    'PREROUTING')
+        output += default_chain_link('nat',	'PREROUTING',	'mangle',   'INPUT')
+        output += default_chain_link('mangle',	'INPUT',	'filter',   'INPUT')
+        output += default_chain_link('filter',	'INPUT',	'security', 'INPUT')
+        output += default_chain_link('security','INPUT',	'raw',	    'OUTPUT')
+        output += default_chain_link('raw',	'OUTPUT',	'mangle',   'OUTPUT')
+        output += default_chain_link('mangle',	'OUTPUT',	'nat',	    'OUTPUT')
+        output += default_chain_link('nat',	'OUTPUT',	'filter',   'OUTPUT')
+        output += default_chain_link('filter',	'OUTPUT',	'security', 'OUTPUT')
+        output += default_chain_link('security','OUTPUT',	'mangle',   'POSTROUTING')
+        output += default_chain_link('mangle',	'POSTROUTING',	'nat',	    'POSTROUTING')
+        output += default_chain_link('nat',	'PREROUTING',	'mangle',   'FORWARD')
+        output += default_chain_link('mangle',	'FORWARD',	'filter',   'FORWARD')
+        output += default_chain_link('filter',	'FORWARD',	'security', 'FORWARD')
+        output += default_chain_link('security','FORWARD',	'mangle',   'POSTROUTING')
+    else:
+        output += default_chain_link('broute',	'BROUTING',	'nat'   ,   'PREROUTING')
+        output += default_chain_link('nat',	'PREROUTING',	'filter',   'INPUT')
+        output += default_chain_link('nat',	'OUTPUT',	'filter',   'OUTPUT')
+        output += default_chain_link('filter',	'OUTPUT',	'nat'   ,   'POSTROUTING')
+        output += default_chain_link('nat',	'POSTROUTING',	'filter',   'FORWARD')
+        output += default_chain_link('filter',   'FORWARD', 'broute',	'BROUTING')
 
     output += '\n}'
     return output
