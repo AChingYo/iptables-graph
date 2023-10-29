@@ -1,137 +1,90 @@
 digraph {
+    bgcolor="black"
     graph [pad="0.5", nodesep="0.5", ranksep="2"];
     node [shape=plain]
     rankdir=LR;
 
-filter_DOCKERUSER [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td><i>DOCKER-USER</i></td></tr>
-  <tr><td port="begin"><i>filter</i></td></tr>
-  <tr><td port="rule_0">-j RETURN</td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-filter_DOCKERISOLATIONSTAGE1 [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td><i>DOCKER-ISOLATION-STAGE-1</i></td></tr>
-  <tr><td port="begin"><i>filter</i></td></tr>
-  <tr><td port="rule_0">-i docker0 ! -o docker0 -j DOCKER-ISOLATION-STAGE-2</td></tr>
-  <tr><td port="rule_1">-j RETURN</td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-filter_DOCKERISOLATIONSTAGE2 [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td><i>DOCKER-ISOLATION-STAGE-2</i></td></tr>
-  <tr><td port="begin"><i>filter</i></td></tr>
-  <tr><td port="rule_0">-o docker0 -j DROP</td></tr>
-  <tr><td port="rule_1">-j RETURN</td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-filter_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>filter</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-filter_FORWARD [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>FORWARD</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>filter</i></td></tr>
-  <tr><td port="rule_0">-j DOCKER-USER</td></tr>
-  <tr><td port="rule_1">-j DOCKER-ISOLATION-STAGE-1</td></tr>
-  <tr><td port="rule_2">-o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT</td></tr>
-  <tr><td port="rule_3">-o docker0 -j DOCKER</td></tr>
-  <tr><td port="rule_4">-i docker0 ! -o docker0 -j ACCEPT</td></tr>
-  <tr><td port="rule_5">-i docker0 -o docker0 -j ACCEPT</td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-filter_INPUT [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>INPUT</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>filter</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-filter_DOCKER [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td><i>DOCKER</i></td></tr>
-  <tr><td port="begin"><i>filter</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-raw_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>raw</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
 raw_PREROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>PREROUTING</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>raw</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-mangle_FORWARD [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>FORWARD</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-mangle_INPUT [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>INPUT</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-mangle_POSTROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>POSTROUTING</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-mangle_PREROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>PREROUTING</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-mangle_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-nat_MASQUERADE [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td><i>MASQUERADE</i></td></tr>
-  <tr><td port="begin"><i>nat</i></td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-nat_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>nat</i></td></tr>
-  <tr><td port="rule_0">! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL -j DOCKER</td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-nat_DOCKER [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td><i>DOCKER</i></td></tr>
-  <tr><td port="begin"><i>nat</i></td></tr>
-  <tr><td port="rule_0">-i docker0 -j RETURN</td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-nat_PREROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>PREROUTING</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>nat</i></td></tr>
-  <tr><td port="rule_0">-m addrtype --dst-type LOCAL -j DOCKER</td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-nat_POSTROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
-  <tr><td bgcolor="red"><i>POSTROUTING</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>nat</i></td></tr>
-  <tr><td port="rule_0">-s 172.18.0.0/24 ! -o docker0 -j MASQUERADE</td></tr>
-  <tr><td port="end">end</td></tr>
-</table>>];
-filter_DOCKERISOLATIONSTAGE1:rule_0 -> filter_DOCKERISOLATIONSTAGE2:begin;
-filter_FORWARD:rule_0 -> filter_DOCKERUSER:begin;
-filter_FORWARD:rule_1 -> filter_DOCKERISOLATIONSTAGE1:begin;
-filter_FORWARD:rule_3 -> filter_DOCKER:begin;
-nat_OUTPUT:rule_0 -> nat_DOCKER:begin;
-nat_PREROUTING:rule_0 -> nat_DOCKER:begin;
-nat_POSTROUTING:rule_0 -> nat_MASQUERADE:begin;
-raw_PREROUTING:end -> mangle_PREROUTING:begin [color=red];
-mangle_PREROUTING:end -> nat_PREROUTING:begin [color=red];
-nat_PREROUTING:end -> mangle_INPUT:begin [color=red];
-mangle_INPUT:end -> filter_INPUT:begin [color=red];
-filter_INPUT:end -> raw_OUTPUT:begin [color=red];
-raw_OUTPUT:end -> mangle_OUTPUT:begin [color=red];
-mangle_OUTPUT:end -> nat_OUTPUT:begin [color=red];
-nat_OUTPUT:end -> filter_OUTPUT:begin [color=red];
-filter_OUTPUT:end -> mangle_POSTROUTING:begin [color=red];
-mangle_POSTROUTING:end -> nat_POSTROUTING:begin [color=red];
-nat_PREROUTING:end -> mangle_FORWARD:begin [color=red];
-mangle_FORWARD:end -> filter_FORWARD:begin [color=red];
-filter_FORWARD:end -> mangle_POSTROUTING:begin [color=red];
+<tr><td bgcolor="red"><i>PREROUTING</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>raw</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];raw_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>raw</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];filter_INPUT [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>INPUT</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>filter</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];filter_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>filter</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];filter_FORWARD [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>FORWARD</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>filter</i></td></tr>
+<tr><td port="rule_0" bgcolor="darkgrey">-j DOCKER-USER</td></tr>
+<tr><td port="rule_1" bgcolor="darkgrey">-j DOCKER-ISOLATION-STAGE-1</td></tr>
+<tr><td port="rule_2" bgcolor="darkgrey">-o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT</td></tr>
+<tr><td port="rule_3" bgcolor="darkgrey">-o docker0 -j DOCKER</td></tr>
+<tr><td port="rule_4" bgcolor="darkgrey">-i docker0 ! -o docker0 -j ACCEPT</td></tr>
+<tr><td port="rule_5" bgcolor="darkgrey">-i docker0 -o docker0 -j ACCEPT</td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];filter_DOCKERUSER [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="white"><i>DOCKER-USER</i></td></tr>
+<tr><td port="begin" bgcolor="white"><i>filter</i></td></tr>
+<tr><td port="rule_0" bgcolor="darkgrey">-j RETURN</td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];filter_DOCKERISOLATIONSTAGE1 [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="white"><i>DOCKER-ISOLATION-STAGE-1</i></td></tr>
+<tr><td port="begin" bgcolor="white"><i>filter</i></td></tr>
+<tr><td port="rule_0" bgcolor="darkgrey">-i docker0 ! -o docker0 -j DOCKER-ISOLATION-STAGE-2</td></tr>
+<tr><td port="rule_1" bgcolor="darkgrey">-j RETURN</td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];filter_DOCKER [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="white"><i>DOCKER</i></td></tr>
+<tr><td port="begin" bgcolor="white"><i>filter</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];filter_DOCKERISOLATIONSTAGE2 [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="white"><i>DOCKER-ISOLATION-STAGE-2</i></td></tr>
+<tr><td port="begin" bgcolor="white"><i>filter</i></td></tr>
+<tr><td port="rule_0" bgcolor="darkgrey">-o docker0 -j DROP</td></tr>
+<tr><td port="rule_1" bgcolor="darkgrey">-j RETURN</td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];nat_PREROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>PREROUTING</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>nat</i></td></tr>
+<tr><td port="rule_0" bgcolor="darkgrey">-m addrtype --dst-type LOCAL -j DOCKER</td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];nat_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>nat</i></td></tr>
+<tr><td port="rule_0" bgcolor="darkgrey">! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL -j DOCKER</td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];nat_POSTROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>POSTROUTING</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>nat</i></td></tr>
+<tr><td port="rule_0" bgcolor="darkgrey">-s 172.18.0.0/24 ! -o docker0 -j MASQUERADE</td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];nat_DOCKER [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="white"><i>DOCKER</i></td></tr>
+<tr><td port="begin" bgcolor="white"><i>nat</i></td></tr>
+<tr><td port="rule_0" bgcolor="darkgrey">-i docker0 -j RETURN</td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];nat_MASQUERADE [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="white"><i>MASQUERADE</i></td></tr>
+<tr><td port="begin" bgcolor="white"><i>nat</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];mangle_PREROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>PREROUTING</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];mangle_INPUT [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>INPUT</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];mangle_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];mangle_FORWARD [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>FORWARD</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];mangle_POSTROUTING [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>POSTROUTING</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>mangle</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];security_INPUT [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>INPUT</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>security</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];security_OUTPUT [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>OUTPUT</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>security</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];security_FORWARD [label=<<table border="0" cellborder="1" cellspacing="0">
+<tr><td bgcolor="red"><i>FORWARD</i></td></tr>
+<tr><td port="begin" bgcolor="tomato"><i>security</i></td></tr><tr><td port="end" bgcolor="white">end</td></tr></table>>];filter_FORWARD:rule_0 -> filter_DOCKERUSER:begin [color="white"]
+filter_FORWARD:rule_1 -> filter_DOCKERISOLATIONSTAGE1:begin [color="white"]
+filter_FORWARD:rule_3 -> filter_DOCKER:begin [color="white"]
+filter_DOCKERISOLATIONSTAGE1:rule_0 -> filter_DOCKERISOLATIONSTAGE2:begin [color="white"]
+nat_PREROUTING:rule_0 -> nat_DOCKER:begin [color="white"]
+nat_OUTPUT:rule_0 -> nat_DOCKER:begin [color="white"]
+nat_POSTROUTING:rule_0 -> nat_MASQUERADE:begin [color="white"]
+raw_PREROUTING:end -> mangle_PREROUTING:begin [color="red"]
+mangle_PREROUTING:end -> nat_PREROUTING:begin [color="red"]
+nat_PREROUTING:end -> mangle_INPUT:begin [color="red"]
+mangle_INPUT:end -> filter_INPUT:begin [color="red"]
+filter_INPUT:end -> security_INPUT:begin [color="red"]
+security_INPUT:end -> raw_OUTPUT:begin [color="red"]
+raw_OUTPUT:end -> mangle_OUTPUT:begin [color="red"]
+mangle_OUTPUT:end -> nat_OUTPUT:begin [color="red"]
+nat_OUTPUT:end -> filter_OUTPUT:begin [color="red"]
+filter_OUTPUT:end -> security_OUTPUT:begin [color="red"]
+security_OUTPUT:end -> mangle_POSTROUTING:begin [color="red"]
+mangle_POSTROUTING:end -> nat_POSTROUTING:begin [color="red"]
+nat_PREROUTING:end -> mangle_FORWARD:begin [color="red"]
+mangle_FORWARD:end -> filter_FORWARD:begin [color="red"]
+filter_FORWARD:end -> security_FORWARD:begin [color="red"]
+security_FORWARD:end -> mangle_POSTROUTING:begin [color="red"]
 
 }
