@@ -28,4 +28,4 @@ $ dot -Tsvg a.dot -o a.svg
 ```
 
 ### Example Graph
-![example.svg](https://raw.githubusercontent.com/AChingYo/iptables-graph/main/example.svg)
+![example.svg](https://raw.githubusercontent.com/dethrophes/iptables-graph/main/example.svg)
