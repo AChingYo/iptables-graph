@@ -106,7 +106,7 @@ def expand_port_range(port_range):
         if len(r) == 2:
             prange += range(int(r[0]), int(r[1]) + 1)
         else:
-            prange = [  int(r[0])  ]
+            prange += [  int(r[0])  ]
     return prange
 
 def test_port_range_in_port_range(a, b):
