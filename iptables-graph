@@ -4,19 +4,22 @@ import os
 import re
 import string
 
+def default_chain_setup():
+    return { 'target': None, 'rules' : list(), 'jump_to_list' : list(), 'goto_list' : list() }
+
 do_ebtables = os.getenv('USE_EBTABLES', default=False)
 if not do_ebtables:
-    all_chains = {	'raw':	    {'PREROUTING':list(), 'OUTPUT':list()},
-        'filter':   {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
-        'nat':	    {'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
-        'mangle':   {'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()},
-        'security': {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()}}
+    all_chains = {	'raw':	    {'PREROUTING':default_chain_setup(), 'OUTPUT':default_chain_setup()},
+        'filter':   {'INPUT':default_chain_setup(), 'OUTPUT':default_chain_setup(), 'FORWARD':default_chain_setup()},
+        'nat':	    {'PREROUTING':default_chain_setup(), 'OUTPUT':default_chain_setup(), 'POSTROUTING':default_chain_setup()},
+        'mangle':   {'PREROUTING':default_chain_setup(), 'INPUT':default_chain_setup(), 'OUTPUT':default_chain_setup(), 'FORWARD':default_chain_setup(), 'POSTROUTING':default_chain_setup()},
+        'security': {'INPUT':default_chain_setup(), 'OUTPUT':default_chain_setup(), 'FORWARD':default_chain_setup()}}
 
 else:
     all_chains = {
-        'filter':   {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
-        'nat':	    {'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
-        'broute':   {'BROUTING':list()}
+        'filter':   {'INPUT':default_chain_setup(), 'OUTPUT':default_chain_setup(), 'FORWARD':default_chain_setup()},
+        'nat':	    {'PREROUTING':default_chain_setup(), 'OUTPUT':default_chain_setup(), 'POSTROUTING':default_chain_setup()},
+        'broute':   {'BROUTING':default_chain_setup()}
         }
 
 defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING', 'BROUTING']
@@ -35,28 +38,39 @@ def parse_input(input_string):
         token_list = line.split()
         if not token_list :
             continue
-        if token_list[0][1:] in all_chains.keys():
-            current_table = token_list[0][1:]
+        if token_list[0][0] == '*':
+            if token_list[0][1:] in all_chains:
+                current_table = token_list[0][1:]
+                continue
+        elif token_list[0][0] == ':':
+            current_chain = token_list[0][1:]
+            if current_chain not in all_chains[current_table]:
+                all_chains[current_table][current_chain] = default_chain_setup()
+            all_chains[current_table][current_chain]['target'] = token_list[1]
             continue
         if token_list[0] == '-A':
             current_chain = token_list[1]
             if current_chain not in all_chains[current_table]:
-                all_chains[current_table][current_chain] = list()
+                all_chains[current_table][current_chain] = default_chain_setup()
 
             rule_body = stats
-            target = ''
-            if token_list[-2] == '-j' and token_list[-1] not in ['RETURN', 'ACCEPT', 'DROP']:
-                target = token_list[-1]
-                if target not in all_chains[current_table]:
-                    all_chains[current_table][target] = list()
-                rule_body += ' '.join(token_list[2:])
-            else:
-                rule_body += ' '.join(token_list[2:])
+            target = None
+            for i, token in enumerate(token_list):
+                if token in [ '-j', '--jump', '-g', '--goto' ] and token_list[i + 1] :
+                    target = { 
+                            'chain' : token_list[i + 1],
+                            'type' : token
+                        }
+                    if target['chain'] in ['RETURN', 'ACCEPT', 'DROP', 'DNAT', 'SNAT', 'NFLOG']:
+                        target['type'] = 'SPECIAL'
+                    elif target['chain'] not in all_chains[current_table]:
+                        all_chains[current_table][target['chain']] = default_chain_setup()
 
-            all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target})
-            continue
-        else:
-            continue
+            rule_body += ' '.join(token_list[2:])
+
+            all_chains[current_table][current_chain]['rules'].append({'rule_body':rule_body, 'target':target})
+
+        continue
 
 
 def get_node_name(table_name, chain_name):
@@ -80,8 +94,9 @@ def escape_xml(s):
 
 default_port_ranges = '''
 red=29700:29799,47000:48653,48659,48662,48663,48753,48754,48850:49151,49200:49799
-green=80
+green=80,443,8080,8000,4443
 yellow=22
+pink=0:1024
 '''
 
 def expand_port_range(port_range):
@@ -128,12 +143,48 @@ def conv_port_range(r):
 colors = {
         'bgcolor'       : 'black',
         'norm_link'     : 'white',
+        'return_link'   : 'green',
+        'goto_return_link'   : 'blue',
+        'jump_return_link'   : 'purple',
         'chain_link'    : 'red',
         'unused_rule'   : 'lightgrey',
         'used_rule'     : 'darkgrey',
         'default_chain' : ['red', 'tomato'],
         'user_chain'    : ['white', 'white'],
 }
+
+from pprint import pprint
+
+cached_links = list()
+def filter_duplicate_links(link):
+    global cached_links
+    if link in cached_links:
+        return ''
+
+    cached_links.append(link)
+    return link
+
+def create_goto_backref(chains, chain, target_node, color):
+    global colors
+    output = ''
+    for source_node in chains[chain]['jump_to_list']:
+        output += filter_duplicate_links('{} -> {} [color="{}"]\n'.format(target_node, source_node, colors[color]))
+    for cchain in chains[chain]['goto_list']:
+        output += create_goto_backref(chains, cchain, target_node, color)
+    return output
+
+
+
+def test_chain_return(chains, chain, recurse):
+    """ Test if the last rule of the destination chain is ACCEPT or DROP """
+    if chains[chain]['rules']:
+        last_rule = chains[chain]['rules'][-1]
+        if last_rule['target']:
+            if last_rule['target']['type'] in ['SPECIAL'] and last_rule['target']['chain'] in ['ACCEPT', 'DROP']:
+                return False
+            if recurse:
+                return test_chain_return(chains, last_rule['target']['chain'], recurse)
+    return True
 
 def create_output(all_chains):
     global default_port_ranges, colors
@@ -151,13 +202,15 @@ def create_output(all_chains):
             node_name = get_node_name(table, chain)
             tmp_body = node_name + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
             if chain in defualt_chain_list:
-                tmp_body +='\n<tr><td bgcolor="{}"><i>{}</i></td></tr>'.format(colors['default_chain'][0], escape_xml( chain ))
+                tmp_body +='\n<tr><td bgcolor="{}"><i>{}</i></td></tr>'.format(colors['default_chain'][0], escape_xml( '{}[{}]'.format(chain, all_chains[table][chain]['target']) ))
                 tmp_body +='\n<tr><td port="begin" bgcolor="{}"><i>{}</i></td></tr>'.format( colors['default_chain'][1], escape_xml( table ))
             else:
-                tmp_body +='\n<tr><td bgcolor="{}"><i>{}</i></td></tr>'.format(colors['user_chain'][0], chain )
+                tmp_body +='\n<tr><td bgcolor="{}"><i>{}</i></td></tr>'.format(colors['user_chain'][0], escape_xml( '{}[{}]'.format(chain, all_chains[table][chain]['target']) ) )
                 tmp_body +='\n<tr><td port="begin" bgcolor="{}"><i>{}</i></td></tr>'.format(colors['user_chain'][1], escape_xml( table ))
-            for i in range(len(all_chains[table][chain])):
-                rule = all_chains[table][chain][i]
+
+
+
+            for i, rule in enumerate(all_chains[table][chain]['rules']):
                 tmp_body += '\n<tr><td port="{}"{}>{}</td></tr>'.format(get_port_name(i), get_rule_attributes(port_ranges, rule), escape_xml( rule["rule_body"] ))
             tmp_body += '<tr><td port="end" bgcolor="{}">end</td></tr>'.format(colors['user_chain'][1])
             tmp_body += '</table>>];'
@@ -165,12 +218,37 @@ def create_output(all_chains):
 
     for table in all_chains:
         for chain in all_chains[table]:
-            for i in range(len(all_chains[table][chain])):
-                rule = all_chains[table][chain][i]
+            for i, rule in enumerate(all_chains[table][chain]['rules']):
                 if rule['target']:
                     source_node = get_node_name(table, chain) + ':' + get_port_name(i)
-                    target_node = get_node_name(table, rule['target']) + ':begin'
+                    if rule['target']['type'] in ['-j' , '--jump']:
+                        all_chains[table][rule['target']['chain']]['jump_to_list'].append(source_node)
+                    elif rule['target']['type'] in ['-g' , '--goto']:
+                        if chain not in all_chains[table][chain]['goto_list']:
+                            all_chains[table][rule['target']['chain']]['goto_list'].append(chain)
+
+    for table in all_chains:
+        for chain in all_chains[table]:
+            for i, rule in enumerate(all_chains[table][chain]['rules']):
+                if rule['target']:
+                    source_node = get_node_name(table, chain) + ':' + get_port_name(i)
+
+                    if rule['target']['type'] in ['SPECIAL']:
+                        if rule['target']['chain'] in ['RETURN']:
+                            output += create_goto_backref(all_chains[table], chain, source_node, 'return_link')
+                        continue
+                    target_node = get_node_name(table, rule['target']['chain']) + ':begin'
                     output += '{} -> {} [color="{}"]\n'.format(source_node, target_node, colors['norm_link'])
+
+                    #
+                    # Create return links.
+                    #
+                    if test_chain_return(all_chains[table], rule['target']['chain'], True):
+                        target_node = get_node_name(table, rule['target']['chain']) + ':end'
+                        if rule['target']['type'] in ['-j' , '--jump']:
+                            output += '{} -> {} [color="{}"]\n'.format(target_node, source_node, colors['jump_return_link'])
+                        elif rule['target']['type'] in ['-g' , '--goto']:
+                            output += create_goto_backref(all_chains[table], chain, target_node, 'goto_return_link')
 
     def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain_name):
         source_node = get_node_name(src_table_name, src_chain_name) + ':end'
