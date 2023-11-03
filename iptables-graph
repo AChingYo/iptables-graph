@@ -33,6 +33,10 @@ for line in line_list:
         else:
             rule_body = ' '.join(token_list[2:])
 
+        rule_body = rule_body.replace('&', '&amp;')
+        rule_body = rule_body.replace('"', '&quot;')
+        rule_body = rule_body.replace('>', '&gt;')
+        rule_body = rule_body.replace('<', '&lt;')
         all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target})
         continue
     else:
