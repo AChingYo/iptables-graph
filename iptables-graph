@@ -18,30 +18,29 @@ for line in line_list:
     if token_list[0][1:] in all_chains.keys():
         current_table = token_list[0][1:]
         continue
-    if token_list[0] == '-A':
-        current_chain = token_list[1]
-        if current_chain not in all_chains[current_table]:
-            all_chains[current_table][current_chain] = list()
-
-        rule_body = ''
-        target = ''
-        if token_list[-2] == '-j' and token_list[-1] not in ['ACCEPT','REJECT','DROP','REDIRECT','MASQUERADE','LOG','DNAT','SNAT','MIRROR','QUEUE','RETURN','MARK']:
-            target = token_list[-1]
-            if target not in all_chains[current_table]:
-                all_chains[current_table][target] = list()
-            rule_body = ' '.join(token_list[2:])
-        else:
-            rule_body = ' '.join(token_list[2:])
-
-        rule_body = rule_body.replace('&', '&amp;')
-        rule_body = rule_body.replace('"', '&quot;')
-        rule_body = rule_body.replace('>', '&gt;')
-        rule_body = rule_body.replace('<', '&lt;')
-        all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target})
+    if token_list[0] != '-A':
         continue
-    else:
-        continue
+    current_chain = token_list[1]
+    if current_chain not in all_chains[current_table]:
+        all_chains[current_table][current_chain] = list()
 
+    target = ''
+    final_rule = False
+    i = token_list.index('-j')
+    if i != -1:
+        target = token_list[i+1]
+        if target in ['ACCEPT','REJECT','DROP','REDIRECT','MASQUERADE','LOG','DNAT','SNAT','MIRROR','QUEUE','RETURN','MARK']:
+            final_rule = target not in ['LOG', 'MARK', 'RETURN']
+            target = ''
+        elif target not in all_chains[current_table]:
+            all_chains[current_table][target] = list()
+    rule_body = ' '.join(token_list[2:])
+    rule_body = rule_body.replace('&', '&amp;')
+    rule_body = rule_body.replace('"', '&quot;')
+    rule_body = rule_body.replace('>', '&gt;')
+    rule_body = rule_body.replace('<', '&lt;')
+    all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target, 'final_rule':final_rule})
+    continue
 
 def get_node_name(table_name, chain_name):
     return re.sub('[^a-zA-Z0-9]', '', table_name) + '_' + re.sub('[^a-zA-Z0-9]', '', chain_name)
@@ -51,7 +50,7 @@ def get_port_name(rule_index):
 
 output="""digraph {
     graph [pad="0.5", nodesep="0.5", ranksep="2"];
-    node [shape=plain]
+    node [shape=box3d]
     rankdir=LR;
 
 """
@@ -72,8 +71,9 @@ for table in all_chains:
             tmp_body += """
   <tr><td port="""
             tmp_body += "\"" + get_port_name(i) + "\""
+            if rule["final_rule"]:
+                tmp_body += " bgcolor=\"lightgrey\""
             tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
-            #tmp_body += """></td></tr>"""
         tmp_body += """
   <tr><td port="end">end</td></tr>
 </table>>];
