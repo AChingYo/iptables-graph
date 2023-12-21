@@ -29,7 +29,9 @@ for line in line_list:
     i = token_list.index('-j')
     if i != -1:
         target = token_list[i+1]
-        if target in ['ACCEPT','REJECT','DROP','REDIRECT','MASQUERADE','LOG','DNAT','SNAT','MIRROR','QUEUE','RETURN','MARK']:
+        if target in ['ACCEPT','REJECT','DROP','RETURN',\
+            'REDIRECT','MASQUERADE','DNAT','SNAT','DNPT','SNPT',\
+            'LOG','QUEUE','MARK']:
             final_rule = target not in ['LOG', 'MARK', 'RETURN']
             target = ''
         elif target not in all_chains[current_table]:
