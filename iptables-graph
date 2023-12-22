@@ -25,7 +25,7 @@ for line in line_list:
 
         rule_body = ''
         target = ''
-        if token_list[-2] == '-j' and token_list[-1] not in ['RETURN', 'ACCEPT', 'DROP']:
+        if (token_list[-2] == '-j' or token_list[-2] == '-g') and token_list[-1] not in ['RETURN', 'ACCEPT', 'DROP']:
             target = token_list[-1]
             if target not in all_chains[current_table]:
                 all_chains[current_table][target] = list()
