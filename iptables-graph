@@ -40,8 +40,10 @@ for line in line_list:
             'LOG','QUEUE','MARK']:
             final_rule = target not in ['LOG', 'MARK', 'RETURN']
             target = ''
-        elif target not in all_chains[current_table]:
-            all_chains[current_table][target] = list()
+        else:
+            token_list[i] = "[" + current_table + ":" + token_list[i] + "]"
+            if target not in all_chains[current_table]:
+                all_chains[current_table][target] = list()
 
     rule_body = ' '.join(token_list[2:])
     rule_body = rule_body.replace('&', '&amp;')
