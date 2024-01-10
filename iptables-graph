@@ -3,19 +3,52 @@ import sys
 import re
 import string
 
-all_chains = {	'raw':	    {'PREROUTING':list(), 'OUTPUT':list()},
-        'filter':   {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
-        'nat':	    {'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
-        'mangle':   {'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()}}
+all_chains = {	
+    'raw':{'PREROUTING':list(), 'OUTPUT':list()},
+    'filter':{'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
+    'nat':{'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
+    'mangle':{'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()}
+}
 
 defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
+tables_comment = {};
+
+def get_escape(text):
+    text = text.replace('&', '&amp;')
+    text = text.replace('"', '&quot;')
+    text = text.replace('>', '&gt;')
+    text = text.replace('<', '&lt;')
+    return text
 
 input_string = sys.stdin.read()
 line_list = input_string.splitlines()
 current_table = None
 for line in line_list:
-    token_list = line.split()
-    if token_list[0][1:] in all_chains.keys():
+    if line[0] == '#':
+        continue
+    buf = []
+    token_list = []
+    qoute = False
+    for i, c in enumerate(line):
+        if qoute:
+            buf.append(c)
+            if c == '"' and line[i-1] != '\\':
+                qoute = False
+                token_list.append(''.join(buf))
+                buf = []
+        else:
+            if c == ' ':
+                if len(buf) > 0:
+                    token_list.append(''.join(buf))
+                    buf = []
+                continue
+            if c == '"':
+                qoute = True
+            buf.append(c)
+    if not qoute and len(buf) > 0:
+        token_list.append(''.join(buf))
+
+    if token_list[0][0] == '*' and token_list[0][1:] in all_chains.keys():
         current_table = token_list[0][1:]
         continue
     if token_list[0] != '-A':
@@ -41,15 +74,24 @@ for line in line_list:
             final_rule = target not in ['LOG', 'MARK', 'RETURN']
             target = ''
         else:
-            token_list[i] = "[" + current_table + ":" + token_list[i] + "]"
+            # remove JUMP
+            del token_list[i-1]
+            del token_list[i-1]
+            if '--comment' in token_list:
+                i = token_list.index('--comment') + 1
+                if i < len(token_list):
+                    comment = token_list[i].replace("\\", "")
+                    name = current_table + ':' + target
+                    if name not in tables_comment:
+                        tables_comment[name] = []
+                    if len(comment) > 0:
+                        comment = get_escape(comment[1:len(comment)-1])
+                        if comment not in tables_comment[name]:
+                            tables_comment[name].append(comment)
             if target not in all_chains[current_table]:
                 all_chains[current_table][target] = list()
 
-    rule_body = ' '.join(token_list[2:])
-    rule_body = rule_body.replace('&', '&amp;')
-    rule_body = rule_body.replace('"', '&quot;')
-    rule_body = rule_body.replace('>', '&gt;')
-    rule_body = rule_body.replace('<', '&lt;')
+    rule_body = get_escape(' '.join(token_list[2:]))
     all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target, 'final_rule':final_rule})
     continue
 
@@ -74,9 +116,13 @@ for table in all_chains:
   <tr><td bgcolor="red"><i>""" + chain + """</i></td></tr>
   <tr><td port="begin" bgcolor="tomato"><i>""" + table + """</i></td></tr>"""
         else:
+            name = table + ":" + chain
+            if name in tables_comment:
+                for comment in tables_comment[name]:
+                    tmp_body +="""
+<tr><td bgcolor="grey"><b><i>""" + comment + """</i></b></td></tr>"""
             tmp_body +="""
-  <tr><td><i>""" + chain + """</i></td></tr>
-  <tr><td port="begin"><i>""" + table + """</i></td></tr>"""
+  <tr><td port="begin"><i>[""" + name + """]</i></td></tr>"""
         for i in range(len(all_chains[table][chain])):
             rule = all_chains[table][chain][i]
             tmp_body += """
