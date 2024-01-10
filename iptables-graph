@@ -15,12 +15,19 @@ def get_node_name(table_name, chain_name):
     return re.sub('[^a-zA-Z0-9]', '', table_name) + '_' + re.sub('[^a-zA-Z0-9]', '', chain_name)
 
 defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
+
+default_chain_policy={}
+for table in all_chains:
+    for chain in defualt_chain_list:
+        default_chain_policy[get_node_name(table, chain)] = 'ACCEPT'
+
 endness_chain = [
     get_node_name('raw', 'PREROUTING'), 
     get_node_name('nat', ':POSTROUTING'), 
     get_node_name('nat', 'INPUT'), 
     get_node_name('raw', 'OUTPUT')
 ]
+
 tables_comment = {}
 
 def get_escape(text):
@@ -58,8 +65,14 @@ for line in line_list:
     if not qoute and len(buf) > 0:
         token_list.append(''.join(buf))
 
-    if token_list[0][0] == '*' and token_list[0][1:] in all_chains.keys():
-        current_table = token_list[0][1:]
+    if token_list[0][0] == '*':
+        if token_list[0][1:] in all_chains.keys():
+            current_table = token_list[0][1:]
+        continue
+    if token_list[0][0] == ':':
+        node_name = get_node_name(current_table, token_list[0][1:])
+        if node_name in default_chain_policy:
+            default_chain_policy[node_name] = token_list[1]
         continue
     if token_list[0] != '-A':
         continue
@@ -124,9 +137,12 @@ for table in all_chains:
             bgcolor ="red"
             if node_name in endness_chain:
                 bgcolor = "lightblue"
+            policy = ""
+            if node_name in default_chain_policy:
+                policy = ":" + default_chain_policy[node_name]
             tmp_body +="""
   <tr><td bgcolor=\"""" + bgcolor + """\"><i>""" + chain + """</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>""" + table + """</i></td></tr>"""
+  <tr><td port="begin" bgcolor="tomato"><i>""" + table + policy + """</i></td></tr>"""
         else:
             if node_name in tables_comment:
                 for comment in tables_comment[node_name]:
@@ -167,6 +183,7 @@ def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain
 output += default_chain_link('raw', 'PREROUTING',   'mangle',   'PREROUTING')
 output += default_chain_link('mangle',  'PREROUTING',   'nat',      'PREROUTING')
 
+output += default_chain_link('mangle',  'PREROUTING',   'mangle',      'INPUT')
 output += default_chain_link('nat', 'PREROUTING',   'mangle',   'INPUT')
 output += default_chain_link('mangle',   'INPUT',   'filter',   'INPUT')
 output += default_chain_link('filter',   'INPUT',   'security',   'INPUT')
