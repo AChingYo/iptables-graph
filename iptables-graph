@@ -24,11 +24,14 @@ for line in line_list:
     if current_chain not in all_chains[current_table]:
         all_chains[current_table][current_chain] = list()
 
+    i = -1
     target = ''
     if '-j' in token_list:
-        target = token_list[token_list.index('-j') + 1]
+        i = token_list.index('-j') + 1
     elif '-g' in token_list:
-        target = token_list[token_list.index('-g') + 1]
+        i = token_list.index('-g') + 1
+    if i > 0 and i < len(token_list):
+        target = token_list[i]
 
     final_rule = False
     if target != '':
