@@ -1,172 +1,182 @@
-    #!/usr/bin/env python3
-    import sys
-    import re
-    import string
+#!/usr/bin/env python3
+import sys
+import re
+import string
 
-    all_chains = {	
-        'raw':{'PREROUTING':list(), 'OUTPUT':list()},
-        'filter':{'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
-        'nat':{'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
-        'mangle':{'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()}
-    }
+all_chains = {  
+    'raw':{'PREROUTING':list(), 'OUTPUT':list()},
+    'filter':{'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
+    'security':{'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
+    'nat':{'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
+    'mangle':{'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()}
+}
 
-    defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
-    tables_comment = {};
+defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
+tables_comment = {};
 
-    def get_escape(text):
-        text = text.replace('&', '&amp;')
-        text = text.replace('"', '&quot;')
-        text = text.replace('>', '&gt;')
-        text = text.replace('<', '&lt;')
-        return text
+def get_escape(text):
+    text = text.replace('&', '&amp;')
+    text = text.replace('"', '&quot;')
+    text = text.replace('>', '&gt;')
+    text = text.replace('<', '&lt;')
+    return text
 
-    input_string = sys.stdin.read()
-    line_list = input_string.splitlines()
-    current_table = None
-    for line in line_list:
-        if line[0] == '#':
-            continue
-        buf = []
-        token_list = []
-        qoute = False
-        for i, c in enumerate(line):
-            if qoute:
-                buf.append(c)
-                if c == '"' and line[i-1] != '\\':
-                    qoute = False
+input_string = sys.stdin.read()
+line_list = input_string.splitlines()
+current_table = None
+for line in line_list:
+    if line[0] == '#':
+        continue
+    buf = []
+    token_list = []
+    qoute = False
+    for i, c in enumerate(line):
+        if qoute:
+            buf.append(c)
+            if c == '"' and line[i-1] != '\\':
+                qoute = False
+                token_list.append(''.join(buf))
+                buf = []
+        else:
+            if c == ' ':
+                if len(buf) > 0:
                     token_list.append(''.join(buf))
                     buf = []
-            else:
-                if c == ' ':
-                    if len(buf) > 0:
-                        token_list.append(''.join(buf))
-                        buf = []
-                    continue
-                if c == '"':
-                    qoute = True
-                buf.append(c)
-        if not qoute and len(buf) > 0:
-            token_list.append(''.join(buf))
+                continue
+            if c == '"':
+                qoute = True
+            buf.append(c)
+    if not qoute and len(buf) > 0:
+        token_list.append(''.join(buf))
 
-        if token_list[0][0] == '*' and token_list[0][1:] in all_chains.keys():
-            current_table = token_list[0][1:]
-            continue
-        if token_list[0] != '-A':
-            continue
-        current_chain = token_list[1]
-        if current_chain not in all_chains[current_table]:
-            all_chains[current_table][current_chain] = list()
-
-        i = -1
-        target = ''
-        if '-j' in token_list:
-            i = token_list.index('-j') + 1
-        elif '-g' in token_list:
-            i = token_list.index('-g') + 1
-        if i > 0 and i < len(token_list):
-            target = token_list[i]
-
-        final_rule = False
-        if target != '':
-            if target in ['ACCEPT','REJECT','DROP','RETURN',\
-                'REDIRECT','MASQUERADE','DNAT','SNAT','DNPT','SNPT',\
-                'LOG','QUEUE','MARK']:
-                final_rule = target not in ['LOG', 'MARK', 'RETURN']
-                target = ''
-            else:
-                # remove JUMP
-                del token_list[i-1]
-                del token_list[i-1]
-                if '--comment' in token_list:
-                    i = token_list.index('--comment') + 1
-                    if i < len(token_list):
-                        comment = token_list[i].replace("\\", "")
-                        name = current_table + ':' + target
-                        if name not in tables_comment:
-                            tables_comment[name] = []
-                        if len(comment) > 0:
-                            comment = get_escape(comment[1:len(comment)-1])
-                            if comment not in tables_comment[name]:
-                                tables_comment[name].append(comment)
-                if target not in all_chains[current_table]:
-                    all_chains[current_table][target] = list()
-
-        rule_body = get_escape(' '.join(token_list[2:]))
-        all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target, 'final_rule':final_rule})
+    if token_list[0][0] == '*' and token_list[0][1:] in all_chains.keys():
+        current_table = token_list[0][1:]
         continue
+    if token_list[0] != '-A':
+        continue
+    current_chain = token_list[1]
+    if current_chain not in all_chains[current_table]:
+        all_chains[current_table][current_chain] = list()
 
-    def get_node_name(table_name, chain_name):
-        return re.sub('[^a-zA-Z0-9]', '', table_name) + '_' + re.sub('[^a-zA-Z0-9]', '', chain_name)
+    i = -1
+    target = ''
+    if '-j' in token_list:
+        i = token_list.index('-j') + 1
+    elif '-g' in token_list:
+        i = token_list.index('-g') + 1
+    if i > 0 and i < len(token_list):
+        target = token_list[i]
 
-    def get_port_name(rule_index):
-        return "rule_" + str(rule_index)
+    final_rule = False
+    if target != '':
+        if target in ['ACCEPT','REJECT','DROP','RETURN',\
+            'REDIRECT','MASQUERADE','DNAT','SNAT','DNPT','SNPT',\
+            'LOG','QUEUE','MARK', \
+            'SECMARK', 'CONNSECMARK']:
+            final_rule = target not in ['LOG', 'MARK', 'RETURN']
+            target = ''
+        else:
+            # remove JUMP
+            del token_list[i-1]
+            del token_list[i-1]
+            if '--comment' in token_list:
+                i = token_list.index('--comment') + 1
+                if i < len(token_list):
+                    comment = token_list[i].replace("\\", "")
+                    name = current_table + ':' + target
+                    if name not in tables_comment:
+                        tables_comment[name] = []
+                    if len(comment) > 0:
+                        comment = get_escape(comment[1:len(comment)-1])
+                        if comment not in tables_comment[name]:
+                            tables_comment[name].append(comment)
+            if target not in all_chains[current_table]:
+                all_chains[current_table][target] = list()
 
-    output="""digraph {
-        graph [pad="0.5", nodesep="0.5", ranksep="2"];
-        node [shape=box3d]
-        rankdir=LR;
+    rule_body = get_escape(' '.join(token_list[2:]))
+    all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target, 'final_rule':final_rule})
+    continue
 
-    """
-    for table in all_chains:
-        for chain in all_chains[table]:
-            node_name = get_node_name(table, chain)
-            tmp_body = node_name + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
-            if chain in defualt_chain_list:
-                tmp_body +="""
-      <tr><td bgcolor="red"><i>""" + chain + """</i></td></tr>
-      <tr><td port="begin" bgcolor="tomato"><i>""" + table + """</i></td></tr>"""
-            else:
-                name = table + ":" + chain
-                if name in tables_comment:
-                    for comment in tables_comment[name]:
-                        tmp_body +="""
-    <tr><td bgcolor="grey"><b><i>""" + comment + """</i></b></td></tr>"""
-                tmp_body +="""
-      <tr><td port="begin"><i>[""" + name + """]</i></td></tr>"""
-            for i in range(len(all_chains[table][chain])):
-                rule = all_chains[table][chain][i]
-                tmp_body += """
-      <tr><td port="""
-                tmp_body += "\"" + get_port_name(i) + "\""
-                if rule["final_rule"]:
-                    tmp_body += " bgcolor=\"lightgrey\""
-                tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
+def get_node_name(table_name, chain_name):
+    return re.sub('[^a-zA-Z0-9]', '', table_name) + '_' + re.sub('[^a-zA-Z0-9]', '', chain_name)
+
+def get_port_name(rule_index):
+    return "rule_" + str(rule_index)
+
+output="""digraph {
+    graph [pad="0.5", nodesep="0.5", ranksep="2"];
+    node [shape=box3d]
+    rankdir=LR;
+
+"""
+for table in all_chains:
+    for chain in all_chains[table]:
+        node_name = get_node_name(table, chain)
+        tmp_body = node_name + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
+        if chain in defualt_chain_list:
+            tmp_body +="""
+  <tr><td bgcolor="red"><i>""" + chain + """</i></td></tr>
+  <tr><td port="begin" bgcolor="tomato"><i>""" + table + """</i></td></tr>"""
+        else:
+            name = table + ":" + chain
+            if name in tables_comment:
+                for comment in tables_comment[name]:
+                    tmp_body +="""
+<tr><td bgcolor="grey"><b><i>""" + comment + """</i></b></td></tr>"""
+            tmp_body +="""
+  <tr><td port="begin"><i>[""" + name + """]</i></td></tr>"""
+        for i in range(len(all_chains[table][chain])):
+            rule = all_chains[table][chain][i]
             tmp_body += """
-      <tr><td port="end">end</td></tr>
-    </table>>];
-    """
-            output += tmp_body
+  <tr><td port="""
+            tmp_body += "\"" + get_port_name(i) + "\""
+            if rule["final_rule"]:
+                tmp_body += " bgcolor=\"lightgrey\""
+            tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
+        tmp_body += """
+  <tr><td port="end">end</td></tr>
+</table>>];
+"""
+        output += tmp_body
 
-    for table in all_chains:
-        for chain in all_chains[table]:
-            for i in range(len(all_chains[table][chain])):
-                rule = all_chains[table][chain][i]
-                if rule['target']:
-                    source_node = get_node_name(table, chain) + ':' + get_port_name(i)
-                    target_node = get_node_name(table, rule['target']) + ':begin'
-                    output += source_node + """ -> """ + target_node + """;
-    """
+for table in all_chains:
+    for chain in all_chains[table]:
+        for i in range(len(all_chains[table][chain])):
+            rule = all_chains[table][chain][i]
+            if rule['target']:
+                source_node = get_node_name(table, chain) + ':' + get_port_name(i)
+                target_node = get_node_name(table, rule['target']) + ':begin'
+                output += source_node + """ -> """ + target_node + """;
+"""
 
-    def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain_name):
-        source_node = get_node_name(src_table_name, src_chain_name) + ':end'
-        target_node = get_node_name(dst_table_name, dst_chain_name) + ':begin'
-        return source_node + """ -> """ + target_node + """ [color=red];
-    """
+def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain_name):
+    source_node = get_node_name(src_table_name, src_chain_name) + ':end'
+    target_node = get_node_name(dst_table_name, dst_chain_name) + ':begin'
+    return source_node + """ -> """ + target_node + """ [color=red];
+"""
 
-    output += default_chain_link('raw',	'PREROUTING',	'mangle',   'PREROUTING')
-    output += default_chain_link('mangle',	'PREROUTING',	'nat',	    'PREROUTING')
-    output += default_chain_link('nat',	'PREROUTING',	'mangle',   'INPUT')
-    output += default_chain_link('mangle',	'INPUT',	'filter',   'INPUT')
-    output += default_chain_link('filter',	'INPUT',	'raw',	    'OUTPUT')
-    output += default_chain_link('raw',	'OUTPUT',	'mangle',   'OUTPUT')
-    output += default_chain_link('mangle',	'OUTPUT',	'nat',	    'OUTPUT')
-    output += default_chain_link('nat',	'OUTPUT',	'filter',   'OUTPUT')
-    output += default_chain_link('filter',	'OUTPUT',	'mangle',   'POSTROUTING')
-    output += default_chain_link('mangle',	'POSTROUTING',	'nat',	    'POSTROUTING')
-    output += default_chain_link('nat',	'PREROUTING',	'mangle',   'FORWARD')
-    output += default_chain_link('mangle',	'FORWARD',	'filter',   'FORWARD')
-    output += default_chain_link('filter',	'FORWARD',	'mangle',   'POSTROUTING')
+output += default_chain_link('raw', 'PREROUTING',   'mangle',   'PREROUTING')
+output += default_chain_link('mangle',  'PREROUTING',   'nat',      'PREROUTING')
 
-    output += """
-    }"""
-    print(output)
+output += default_chain_link('nat', 'PREROUTING',   'mangle',   'INPUT')
+output += default_chain_link('mangle',   'INPUT',   'filter',   'INPUT')
+output += default_chain_link('filter',   'INPUT',   'security',   'INPUT')
+output += default_chain_link('security',   'INPUT',   'nat',   'INPUT')
+
+output += default_chain_link('nat', 'PREROUTING',   'mangle',   'FORWARD')
+output += default_chain_link('mangle', 'FORWARD',   'filter',   'FORWARD')
+output += default_chain_link('filter',   'FORWARD',   'security',   'FORWARD')
+
+output += default_chain_link('nat',   'INPUT',   'raw',   'OUTPUT')
+output += default_chain_link('raw',   'OUTPUT',   'mangle',   'OUTPUT')
+output += default_chain_link('mangle',   'OUTPUT',   'nat',   'OUTPUT')
+output += default_chain_link('nat',   'OUTPUT',   'filter',   'OUTPUT')
+output += default_chain_link('filter',   'OUTPUT',   'security',   'OUTPUT')
+
+output += default_chain_link('security',   'OUTPUT',   'mangle',   'POSTROUTING')
+output += default_chain_link('security',   'FORWARD',   'mangle',   'POSTROUTING')
+output += default_chain_link('mangle',   'POSTROUTING',   'nat',   'POSTROUTING')
+
+output += """
+}"""
+print(output)
