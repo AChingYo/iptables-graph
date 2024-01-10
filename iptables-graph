@@ -25,10 +25,13 @@ for line in line_list:
         all_chains[current_table][current_chain] = list()
 
     target = ''
+    if '-j' in token_list:
+        target = token_list[token_list.index('-j') + 1]
+    elif '-g' in token_list:
+        target = token_list[token_list.index('-g') + 1]
+
     final_rule = False
-    i = token_list.index('-j')
-    if i != -1:
-        target = token_list[i+1]
+    if target != '':
         if target in ['ACCEPT','REJECT','DROP','RETURN',\
             'REDIRECT','MASQUERADE','DNAT','SNAT','DNPT','SNPT',\
             'LOG','QUEUE','MARK']:
@@ -36,6 +39,7 @@ for line in line_list:
             target = ''
         elif target not in all_chains[current_table]:
             all_chains[current_table][target] = list()
+
     rule_body = ' '.join(token_list[2:])
     rule_body = rule_body.replace('&', '&amp;')
     rule_body = rule_body.replace('"', '&quot;')
