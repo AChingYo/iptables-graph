@@ -3,45 +3,64 @@ import sys
 import re
 import string
 
-all_chains = {  
-    'raw':{'PREROUTING':list(), 'OUTPUT':list()},
-    'filter':{'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
-    'security':{'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
-    'nat':{'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
-    'mangle':{'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()}
+all_chains = {
+    "raw": {"PREROUTING": list(), "OUTPUT": list()},
+    "filter": {"INPUT": list(), "OUTPUT": list(), "FORWARD": list()},
+    "security": {"INPUT": list(), "OUTPUT": list(), "FORWARD": list()},
+    "nat": {
+        "PREROUTING": list(),
+        "INPUT": list(),
+        "OUTPUT": list(),
+        "POSTROUTING": list(),
+    },
+    "mangle": {
+        "PREROUTING": list(),
+        "INPUT": list(),
+        "OUTPUT": list(),
+        "FORWARD": list(),
+        "POSTROUTING": list(),
+    },
 }
 
+
 def get_node_name(table_name, chain_name):
-    return re.sub('[^a-zA-Z0-9]', '', table_name) + '_' + re.sub('[^a-zA-Z0-9]', '', chain_name)
+    return (
+        re.sub("[^a-zA-Z0-9]", "", table_name)
+        + "_"
+        + re.sub("[^a-zA-Z0-9]", "", chain_name)
+    )
 
-defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
 
-default_chain_policy={}
+defualt_chain_list = ["PREROUTING", "FORWARD", "INPUT", "OUTPUT", "POSTROUTING"]
+
+default_chain_policy = {}
 for table in all_chains:
     for chain in defualt_chain_list:
-        default_chain_policy[get_node_name(table, chain)] = 'ACCEPT'
+        default_chain_policy[get_node_name(table, chain)] = "ACCEPT"
 
 endness_chain = [
-    get_node_name('raw', 'PREROUTING'), 
-    get_node_name('nat', ':POSTROUTING'), 
-    get_node_name('nat', 'INPUT'), 
-    get_node_name('raw', 'OUTPUT')
+    get_node_name("raw", "PREROUTING"),
+    get_node_name("nat", ":POSTROUTING"),
+    get_node_name("nat", "INPUT"),
+    get_node_name("raw", "OUTPUT"),
 ]
 
 tables_comment = {}
 
+
 def get_escape(text):
-    text = text.replace('&', '&amp;')
-    text = text.replace('"', '&quot;')
-    text = text.replace('>', '&gt;')
-    text = text.replace('<', '&lt;')
+    text = text.replace("&", "&amp;")
+    text = text.replace('"', "&quot;")
+    text = text.replace(">", "&gt;")
+    text = text.replace("<", "&lt;")
     return text
+
 
 input_string = sys.stdin.read()
 line_list = input_string.splitlines()
 current_table = None
 for line in line_list:
-    if line[0] == '#':
+    if line[0] == "#":
         continue
     buf = []
     token_list = []
@@ -49,159 +68,223 @@ for line in line_list:
     for i, c in enumerate(line):
         if qoute:
             buf.append(c)
-            if c == '"' and line[i-1] != '\\':
+            if c == '"' and line[i - 1] != "\\":
                 qoute = False
-                token_list.append(''.join(buf))
+                token_list.append("".join(buf))
                 buf = []
         else:
-            if c == ' ':
+            if c == " ":
                 if len(buf) > 0:
-                    token_list.append(''.join(buf))
+                    token_list.append("".join(buf))
                     buf = []
                 continue
             if c == '"':
                 qoute = True
             buf.append(c)
     if not qoute and len(buf) > 0:
-        token_list.append(''.join(buf))
+        token_list.append("".join(buf))
 
-    if token_list[0][0] == '*':
+    if token_list[0][0] == "*":
         if token_list[0][1:] in all_chains.keys():
             current_table = token_list[0][1:]
         continue
-    if token_list[0][0] == ':':
+    if token_list[0][0] == ":":
         node_name = get_node_name(current_table, token_list[0][1:])
         if node_name in default_chain_policy:
             default_chain_policy[node_name] = token_list[1]
         continue
-    if token_list[0] != '-A':
+    if token_list[0] != "-A":
         continue
     current_chain = token_list[1]
     if current_chain not in all_chains[current_table]:
         all_chains[current_table][current_chain] = list()
 
     i = -1
-    target = ''
-    if '-j' in token_list:
-        i = token_list.index('-j') + 1
-    elif '-g' in token_list:
-        i = token_list.index('-g') + 1
+    target = ""
+    if "-j" in token_list:
+        i = token_list.index("-j") + 1
+    elif "-g" in token_list:
+        i = token_list.index("-g") + 1
     if i > 0 and i < len(token_list):
         target = token_list[i]
 
     final_rule = False
-    if target != '':
-        if target in ['ACCEPT','REJECT','DROP','RETURN',\
-            'REDIRECT','MASQUERADE','DNAT','SNAT','DNPT','SNPT',\
-            'LOG','QUEUE','MARK', \
-            'SECMARK', 'CONNSECMARK']:
-            final_rule = target not in ['LOG', 'MARK', 'RETURN']
-            target = ''
+    if target != "":
+        if target in [
+            "ACCEPT",
+            "REJECT",
+            "DROP",
+            "RETURN",
+            "REDIRECT",
+            "MASQUERADE",
+            "DNAT",
+            "SNAT",
+            "DNPT",
+            "SNPT",
+            "LOG",
+            "QUEUE",
+            "MARK",
+            "SECMARK",
+            "CONNSECMARK",
+        ]:
+            final_rule = target not in ["LOG", "MARK", "RETURN"]
+            target = ""
         else:
             # remove JUMP
-            del token_list[i-1]
-            del token_list[i-1]
-            if '--comment' in token_list:
-                i = token_list.index('--comment') + 1
+            del token_list[i - 1]
+            del token_list[i - 1]
+            if "--comment" in token_list:
+                i = token_list.index("--comment") + 1
                 if i < len(token_list):
                     comment = token_list[i].replace("\\", "")
                     node_name = get_node_name(current_table, target)
                     if node_name not in tables_comment:
                         tables_comment[node_name] = []
                     if len(comment) > 0:
-                        comment = get_escape(comment[1:len(comment)-1])
+                        comment = get_escape(comment[1 : len(comment) - 1])
                         if comment not in tables_comment[node_name]:
                             tables_comment[node_name].append(comment)
             if target not in all_chains[current_table]:
                 all_chains[current_table][target] = list()
 
-    rule_body = get_escape(' '.join(token_list[2:]))
-    all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target, 'final_rule':final_rule})
+    rule_body = get_escape(" ".join(token_list[2:]))
+    all_chains[current_table][current_chain].append(
+        {"rule_body": rule_body, "target": target, "final_rule": final_rule}
+    )
     continue
 
 
 def get_port_name(rule_index):
     return "rule_" + str(rule_index)
 
-output="""digraph {
+
+output = """digraph {
     graph [pad="0.5", nodesep="0.5", ranksep="2"];
     node [shape=box3d]
     rankdir=LR;
-
 """
 for table in all_chains:
     for chain in all_chains[table]:
         node_name = get_node_name(table, chain)
-        tmp_body = node_name + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
+        tmp_body = (
+            """
+    """
+            + node_name
+            + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
+        )
         if chain in defualt_chain_list:
-            bgcolor ="red"
+            bgcolor = "tomato"
             if node_name in endness_chain:
                 bgcolor = "lightblue"
-            policy = ""
-            if node_name in default_chain_policy:
-                policy = ":" + default_chain_policy[node_name]
-            tmp_body +="""
-  <tr><td bgcolor=\"""" + bgcolor + """\"><i>""" + chain + """</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>""" + table + policy + """</i></td></tr>"""
+            tmp_body += (
+                """
+      <tr><td bgcolor=\""""
+                + bgcolor
+                + """\"><i>"""
+                + node_name.replace("_", ":")
+                + """</i></td></tr>
+      <tr><td port="begin"></td></tr>"""
+            )
         else:
-            if node_name in tables_comment:
-                for comment in tables_comment[node_name]:
-                    tmp_body +="""
-<tr><td bgcolor="grey"><b><i>""" + comment + """</i></b></td></tr>"""
-            tmp_body +="""
-  <tr><td port="begin"><i>[""" + node_name.replace("_",  ":")  + """]</i></td></tr>"""
+            if not node_name in tables_comment:
+                tables_comment[node_name] = [node_name.replace("_", ":")]
+            for comment in sorted(tables_comment[node_name]):
+                tmp_body += (
+                    """
+      <tr><td bgcolor="grey"><b><i>"""
+                    + comment
+                    + """</i></b></td></tr>"""
+                )
+            tmp_body += """
+      <tr><td port="begin"></td></tr>"""
         for i in range(len(all_chains[table][chain])):
             rule = all_chains[table][chain][i]
             tmp_body += """
-  <tr><td port="""
-            tmp_body += "\"" + get_port_name(i) + "\""
+      <tr><td port="""
+            tmp_body += '"' + get_port_name(i) + '"'
             if rule["final_rule"]:
-                tmp_body += " bgcolor=\"lightgrey\""
+                tmp_body += ' bgcolor="lightgrey"'
             tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
-        tmp_body += """
-  <tr><td port="end">end</td></tr>
-</table>>];
+        policy = "-j RETURN"
+        if node_name in default_chain_policy:
+            policy = "-j " + default_chain_policy[node_name]
+        tmp_body += (
+            """
+      <tr><td port="end">"""
+            + policy
+            + """</td></tr>
+    </table>>];
 """
+        )
         output += tmp_body
 
 for table in all_chains:
     for chain in all_chains[table]:
         for i in range(len(all_chains[table][chain])):
             rule = all_chains[table][chain][i]
-            if rule['target']:
-                source_node = get_node_name(table, chain) + ':' + get_port_name(i)
-                target_node = get_node_name(table, rule['target']) + ':begin'
-                output += source_node + """ -> """ + target_node + """;
-"""
+            if rule["target"]:
+                source_node = get_node_name(table, chain) + ":" + get_port_name(i)
+                target_node = get_node_name(table, rule["target"]) + ":begin"
+                output += (
+                    """
+    """
+                    + source_node
+                    + """ -> """
+                    + target_node
+                    + """;"""
+                )
+
 
 def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain_name):
-    source_node = get_node_name(src_table_name, src_chain_name) + ':end'
-    target_node = get_node_name(dst_table_name, dst_chain_name) + ':begin'
-    return source_node + """ -> """ + target_node + """ [color=red];
-"""
+    source_node = get_node_name(src_table_name, src_chain_name)
+    color = "red"
+    if (
+        source_node in default_chain_policy
+        and default_chain_policy[source_node] != "ACCEPT"
+    ):
+        color = "grey"
+    target_node = get_node_name(dst_table_name, dst_chain_name)
+    return (
+        """
+    """
+        + source_node
+        + """:end -> """
+        + target_node
+        + """:begin [color="""
+        + color
+        + """];"""
+    )
 
-output += default_chain_link('raw', 'PREROUTING',   'mangle',   'PREROUTING')
-output += default_chain_link('mangle',  'PREROUTING',   'nat',      'PREROUTING')
+output += "INGRESS[shape=circle fillcolor=lightblue style=filled];"
+output += "EGRESS[shape=circle fillcolor=lightblue style=filled];"
+output += "APPLICATION[shape=circle style=filled];"
 
-output += default_chain_link('mangle',  'PREROUTING',   'mangle',      'INPUT')
-output += default_chain_link('nat', 'PREROUTING',   'mangle',   'INPUT')
-output += default_chain_link('mangle',   'INPUT',   'filter',   'INPUT')
-output += default_chain_link('filter',   'INPUT',   'security',   'INPUT')
-output += default_chain_link('security',   'INPUT',   'nat',   'INPUT')
+output += "INGRESS->" + get_node_name("raw", "PREROUTING") + ":begin[color=blue];"
+output += get_node_name("nat", "INPUT") + ":end-> APPLICATION[color=blue];"
+output += "APPLICATION->" + get_node_name("raw", "OUTPUT") + ":begin[color=blue];"
+output += get_node_name("nat", "POSTROUTING") + ":end-> EGRESS[color=blue];"
 
-output += default_chain_link('nat', 'PREROUTING',   'mangle',   'FORWARD')
-output += default_chain_link('mangle', 'FORWARD',   'filter',   'FORWARD')
-output += default_chain_link('filter',   'FORWARD',   'security',   'FORWARD')
+output += default_chain_link("raw", "PREROUTING", "mangle", "PREROUTING")
+output += default_chain_link("mangle", "PREROUTING", "nat", "PREROUTING")
 
-output += default_chain_link('nat',   'INPUT',   'raw',   'OUTPUT')
-output += default_chain_link('raw',   'OUTPUT',   'mangle',   'OUTPUT')
-output += default_chain_link('mangle',   'OUTPUT',   'nat',   'OUTPUT')
-output += default_chain_link('nat',   'OUTPUT',   'filter',   'OUTPUT')
-output += default_chain_link('filter',   'OUTPUT',   'security',   'OUTPUT')
+output += default_chain_link("nat", "PREROUTING", "mangle", "INPUT")
+output += default_chain_link("mangle", "INPUT", "filter", "INPUT")
+output += default_chain_link("filter", "INPUT", "security", "INPUT")
+output += default_chain_link("security", "INPUT", "nat", "INPUT")
 
-output += default_chain_link('security',   'OUTPUT',   'mangle',   'POSTROUTING')
-output += default_chain_link('security',   'FORWARD',   'mangle',   'POSTROUTING')
-output += default_chain_link('mangle',   'POSTROUTING',   'nat',   'POSTROUTING')
+output += default_chain_link("nat", "PREROUTING", "mangle", "FORWARD")
+output += default_chain_link("mangle", "FORWARD", "filter", "FORWARD")
+output += default_chain_link("filter", "FORWARD", "security", "FORWARD")
+
+# output += default_chain_link("nat", "INPUT", "raw", "OUTPUT")
+output += default_chain_link("raw", "OUTPUT", "mangle", "OUTPUT")
+output += default_chain_link("mangle", "OUTPUT", "nat", "OUTPUT")
+output += default_chain_link("nat", "OUTPUT", "filter", "OUTPUT")
+output += default_chain_link("filter", "OUTPUT", "security", "OUTPUT")
+
+output += default_chain_link("security", "OUTPUT", "mangle", "POSTROUTING")
+output += default_chain_link("security", "FORWARD", "mangle", "POSTROUTING")
+output += default_chain_link("mangle", "POSTROUTING", "nat", "POSTROUTING")
 
 output += """
 }"""
