@@ -167,7 +167,9 @@ if argv.eliminate:
             rules = all_chains[table][chain]
             for i in range(len(rules)):
                 if rules[i]["rule_body"] == "-j RETURN":
-                    while i != len(rules)-1:
+                    if chain in defualt_chain_list:
+                        i += 1
+                    while i < len(rules):
                         del rules[i]
                     break
                 target = rules[i]["target"]
