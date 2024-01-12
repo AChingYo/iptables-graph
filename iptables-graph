@@ -2,6 +2,11 @@
 import sys
 import re
 import string
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--eliminate", help="eliminate empty/unused chain", action=argparse.BooleanOptionalAction)
+argv = parser.parse_args()
 
 all_chains = {
     "raw": {"PREROUTING": list(), "OUTPUT": list()},
@@ -46,7 +51,7 @@ endness_chain = [
 ]
 
 tables_comment = {}
-
+tables_target = []
 
 def get_escape(text):
     text = text.replace("&", "&amp;")
@@ -130,6 +135,8 @@ for line in line_list:
             final_rule = target not in ["LOG", "MARK", "RETURN"]
             target = ""
         else:
+            if tables_target not in tables_target:
+                tables_target.append(target)
             # remove JUMP
             del token_list[i - 1]
             del token_list[i - 1]
@@ -153,7 +160,6 @@ for line in line_list:
     )
     continue
 
-
 def get_port_name(rule_index):
     return "rule_" + str(rule_index)
 
@@ -165,6 +171,10 @@ output = """digraph {
 """
 for table in all_chains:
     for chain in all_chains[table]:
+        if argv.eliminate and not chain in defualt_chain_list:
+            if chain not in tables_target or len(all_chains[table][chain]) == 0:
+                continue
+
         node_name = get_node_name(table, chain)
         tmp_body = (
             """
@@ -202,7 +212,10 @@ for table in all_chains:
             tmp_body += """
       <tr><td port="""
             tmp_body += '"' + get_port_name(i) + '"'
-            if rule["final_rule"]:
+            if argv.eliminate and rule["target"] and rule["target"] \
+                not in defualt_chain_list and len(all_chains[table][rule["target"]]) == 0:
+                tmp_body += ' bgcolor="yellow"'
+            elif rule["final_rule"]:
                 tmp_body += ' bgcolor="lightgrey"'
             tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
         policy = "-j RETURN"
@@ -221,10 +234,14 @@ for table in all_chains:
 for table in all_chains:
     for chain in all_chains[table]:
         for i in range(len(all_chains[table][chain])):
-            rule = all_chains[table][chain][i]
-            if rule["target"]:
+            target = all_chains[table][chain][i]["target"]
+            if target:
+                if argv.eliminate and target not in defualt_chain_list:
+                    if target not in tables_target or len(all_chains[table][target]) == 0:
+                        continue
+
                 source_node = get_node_name(table, chain) + ":" + get_port_name(i)
-                target_node = get_node_name(table, rule["target"]) + ":begin"
+                target_node = get_node_name(table, target) + ":begin"
                 output += (
                     """
     """
@@ -255,14 +272,17 @@ def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain
         + """];"""
     )
 
-output += "INGRESS[shape=circle fillcolor=lightblue style=filled];"
-output += "EGRESS[shape=circle fillcolor=lightblue style=filled];"
-output += "APPLICATION[shape=circle style=filled];"
-
-output += "INGRESS->" + get_node_name("raw", "PREROUTING") + ":begin[color=blue];"
-output += get_node_name("nat", "INPUT") + ":end-> APPLICATION[color=blue];"
-output += "APPLICATION->" + get_node_name("raw", "OUTPUT") + ":begin[color=blue];"
-output += get_node_name("nat", "POSTROUTING") + ":end-> EGRESS[color=blue];"
+def default_link():
+    return """
+    INGRESS[shape=circle fillcolor=lightblue style=filled];
+    EGRESS[shape=circle fillcolor=lightblue style=filled];
+    APPLICATION[shape=circle fillcolor=lightblue style=filled];
+    INGRESS->""" + get_node_name("raw", "PREROUTING") + """:begin[color=blue];
+    """ + get_node_name("nat", "INPUT") + """:end-> APPLICATION[color=blue];
+    APPLICATION->""" + get_node_name("raw", "OUTPUT") + """:begin[color=blue];
+    """ + get_node_name("nat", "POSTROUTING") + """:end-> EGRESS[color=blue];"""
+    
+output += default_link()
 
 output += default_chain_link("raw", "PREROUTING", "mangle", "PREROUTING")
 output += default_chain_link("mangle", "PREROUTING", "nat", "PREROUTING")
@@ -276,7 +296,6 @@ output += default_chain_link("nat", "PREROUTING", "mangle", "FORWARD")
 output += default_chain_link("mangle", "FORWARD", "filter", "FORWARD")
 output += default_chain_link("filter", "FORWARD", "security", "FORWARD")
 
-# output += default_chain_link("nat", "INPUT", "raw", "OUTPUT")
 output += default_chain_link("raw", "OUTPUT", "mangle", "OUTPUT")
 output += default_chain_link("mangle", "OUTPUT", "nat", "OUTPUT")
 output += default_chain_link("nat", "OUTPUT", "filter", "OUTPUT")
