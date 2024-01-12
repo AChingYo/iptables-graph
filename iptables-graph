@@ -105,7 +105,7 @@ for line in line_list:
         all_chains[current_table][current_chain] = list()
 
     i = -1
-    target = ""
+    target = None
     if "-j" in token_list:
         i = token_list.index("-j") + 1
     elif "-g" in token_list:
@@ -114,7 +114,7 @@ for line in line_list:
         target = token_list[i]
 
     final_rule = False
-    if target != "":
+    if target:
         if target in [
             "ACCEPT",
             "REJECT",
@@ -133,7 +133,7 @@ for line in line_list:
             "CONNSECMARK",
         ]:
             final_rule = target not in ["LOG", "MARK", "RETURN"]
-            target = ""
+            target = None
         else:
             node_name = get_node_name(current_table, target)
             if node_name not in tables_target:
@@ -161,6 +161,17 @@ for line in line_list:
     )
     continue
 
+def get_next_chain(table_name, chain_name):
+    rules=all_chains[table_name][chain_name]
+    if len(rules) == 1:
+        target = rules[0]["target"]
+        rule = rules[0]["rule_body"]
+        if target and rule == "":
+            del rules[0]
+            tables_target[get_node_name(table_name, chain_name)] -= 1
+            return get_next_chain(table_name, target)
+    return chain_name
+
 if argv.eliminate:
     for table in all_chains:
         for chain in all_chains[table]:
@@ -173,13 +184,8 @@ if argv.eliminate:
                         del rules[i]
                     break
                 target = rules[i]["target"]
-                if target and target not in defualt_chain_list and len(all_chains[table][target]) == 1:
-                    rule = all_chains[table][target][0]
-                    if rule["rule_body"] == "" and rule["target"]:
-                        node_name = get_node_name(table, rule["target"])
-                        tables_target[node_name] -= 1
-                        rules[i]["target"] = rule["target"]
-                        del all_chains[table][target][0]
+                if target and target not in defualt_chain_list:
+                    rules[i]["target"] = get_next_chain(table, target)
 
 def get_port_name(rule_index):
     return "rule_" + str(rule_index)
@@ -230,13 +236,18 @@ for table in all_chains:
       <tr><td port="begin"></td></tr>"""
         for i in range(len(all_chains[table][chain])):
             rule = all_chains[table][chain][i]
+            empty_target = False
             if argv.eliminate and rule["target"] and rule["target"] \
                 not in defualt_chain_list and len(all_chains[table][rule["target"]]) == 0:
-                continue
+                if rule["rule_body"] == "":
+                    continue
+                empty_target = True
             tmp_body += """
       <tr><td port="""
             tmp_body += '"' + get_port_name(i) + '"'
-            if rule["final_rule"]:
+            if empty_target:
+                tmp_body += ' bgcolor="yellow"'
+            elif rule["final_rule"]:
                 tmp_body += ' bgcolor="lightgrey"'
             tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
         policy = "-j RETURN"
