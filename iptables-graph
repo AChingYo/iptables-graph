@@ -60,15 +60,13 @@ def get_escape(text):
     text = text.replace("<", "&lt;")
     return text
 
-
-input_string = sys.stdin.read()
-line_list = input_string.splitlines()
-current_table = None
-for line in line_list:
-    if line[0] == "#":
-        continue
-    buf = []
+def parse_line(line):
     token_list = []
+    if line[0] == '#':
+        token_list.append('#')
+        token_list.append(line[1:])
+        return token_list
+    buf = []
     qoute = False
     for i, c in enumerate(line):
         if qoute:
@@ -88,30 +86,44 @@ for line in line_list:
             buf.append(c)
     if not qoute and len(buf) > 0:
         token_list.append("".join(buf))
+    if len(token_list ) > 0:
+        first = token_list[0][0]
+        if first == "*" or  first == ':':
+            token_list.insert(0, first)
+            token_list[1] =  token_list[1][1:]
+    return token_list
 
-    if token_list[0][0] == "*":
-        if token_list[0][1:] in all_chains.keys():
-            current_table = token_list[0][1:]
+input_string = sys.stdin.read()
+line_list = input_string.splitlines()
+current_table = None
+for line in line_list:
+    args = parse_line(line)
+    if len(args) < 1  or args[0] == "#":
         continue
-    if token_list[0][0] == ":":
-        node_name = get_node_name(current_table, token_list[0][1:])
-        if node_name in default_chain_policy:
-            default_chain_policy[node_name] = token_list[1]
+    if args[0] == "*":
+        if args[1] in all_chains.keys():
+            current_table = args[1]
         continue
-    if token_list[0] != "-A":
+    if args[0] == ":":
+        node_name = get_node_name(current_table, args[1])
+        if args[2] == '-':
+            args[2] = "RETURN"
+        default_chain_policy[node_name] = args[2]
         continue
-    current_chain = token_list[1]
+    if args[0] != "-A":
+        continue
+    current_chain = args[1]
     if current_chain not in all_chains[current_table]:
         all_chains[current_table][current_chain] = list()
 
     i = -1
     target = None
-    if "-j" in token_list:
-        i = token_list.index("-j") + 1
-    elif "-g" in token_list:
-        i = token_list.index("-g") + 1
-    if i > 0 and i < len(token_list):
-        target = token_list[i]
+    if "-j" in args:
+        i = args.index("-j") + 1
+    elif "-g" in args:
+        i = args.index("-g") + 1
+    if i > 0 and i < len(args):
+        target = args[i]
 
     final_rule = False
     if target:
@@ -130,9 +142,9 @@ for line in line_list:
             "QUEUE",
             "MARK",
             "SECMARK",
-            "CONNSECMARK",
+            "CONNSECMARK"
         ]:
-            final_rule = target not in ["LOG", "MARK", "RETURN"]
+            final_rule = target not in ["LOG", "MARK", "SECMARK", "CONNSECMARK"]
             target = None
         else:
             node_name = get_node_name(current_table, target)
@@ -140,12 +152,12 @@ for line in line_list:
                 tables_target[node_name] = 0
             tables_target[node_name] += 1
             # remove JUMP
-            del token_list[i - 1]
-            del token_list[i - 1]
-            if "--comment" in token_list:
-                i = token_list.index("--comment") + 1
-                if i < len(token_list):
-                    comment = token_list[i].replace("\\", "")
+            del args[i - 1]
+            del args[i - 1]
+            if "--comment" in args:
+                i = args.index("--comment") + 1
+                if i < len(args):
+                    comment = args[i].replace("\\", "")
                     if node_name not in tables_comment:
                         tables_comment[node_name] = []
                     if len(comment) > 0:
@@ -155,9 +167,8 @@ for line in line_list:
             if target not in all_chains[current_table]:
                 all_chains[current_table][target] = list()
 
-    rule_body = get_escape(" ".join(token_list[2:]))
     all_chains[current_table][current_chain].append(
-        {"rule_body": rule_body, "target": target, "final_rule": final_rule}
+        {"rule": args[2:], "target": target, "final": final_rule}
     )
     continue
 
@@ -165,8 +176,8 @@ def get_next_chain(table_name, chain_name):
     rules=all_chains[table_name][chain_name]
     if len(rules) == 1:
         target = rules[0]["target"]
-        rule = rules[0]["rule_body"]
-        if target and rule == "":
+        rule = rules[0]["rule"]
+        if target and len(rule) == 0:
             del rules[0]
             tables_target[get_node_name(table_name, chain_name)] -= 1
             return get_next_chain(table_name, target)
@@ -177,7 +188,8 @@ if argv.eliminate:
         for chain in all_chains[table]:
             rules = all_chains[table][chain]
             for i in range(len(rules)):
-                if rules[i]["rule_body"] == "-j RETURN":
+                rule = rules[i]["rule"]
+                if len(rule) == 2  and rule[0] == "-j":
                     if chain in defualt_chain_list:
                         i += 1
                     while i < len(rules):
@@ -239,7 +251,7 @@ for table in all_chains:
             empty_target = False
             if argv.eliminate and rule["target"] and rule["target"] \
                 not in defualt_chain_list and len(all_chains[table][rule["target"]]) == 0:
-                if rule["rule_body"] == "":
+                if len(rule["rule"]) == 0:
                     continue
                 empty_target = True
             tmp_body += """
@@ -247,15 +259,22 @@ for table in all_chains:
             tmp_body += '"' + get_port_name(i) + '"'
             if empty_target:
                 tmp_body += ' bgcolor="yellow"'
-            elif rule["final_rule"]:
-                tmp_body += ' bgcolor="lightgrey"'
-            tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
-        policy = "-j RETURN"
-        if node_name in default_chain_policy:
-            policy = "-j " + default_chain_policy[node_name]
+            elif rule["final"]:
+                target = rule['rule'][rule['rule'].index('-j') + 1]
+                if target == 'DROP' or target == 'REJECT':
+                    tmp_body += ' bgcolor="coral"'
+                elif target == 'RETURN':
+                    tmp_body += ' bgcolor="moccasin"'
+                else:
+                    tmp_body += ' bgcolor="lightgreen"'
+            tmp_body += """>""" + get_escape(" ".join(rule["rule"])) + """</td></tr>"""
+        policy = "-j " + default_chain_policy[node_name]
+        bgcolor = "white"
+        if default_chain_policy[node_name] != 'RETURN':
+            bgcolor = "lightgreen"
         tmp_body += (
             """
-      <tr><td port="end">"""
+      <tr><td port="end" bgcolor=\"""" + bgcolor + """\">"""
             + policy
             + """</td></tr>
     </table>>];
@@ -307,13 +326,13 @@ def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain
 
 def default_link():
     return """
-    INGRESS[shape=circle fillcolor=lightblue style=filled];
-    EGRESS[shape=circle fillcolor=lightblue style=filled];
-    APPLICATION[shape=circle fillcolor=lightblue style=filled];
-    INGRESS->""" + get_node_name("raw", "PREROUTING") + """:begin[color=blue];
+    START[shape=circle fillcolor=black fontcolor=white style=filled];
+    END[shape=circle fillcolor=black fontcolor=white style=filled];
+    APPLICATION[shape=circle fillcolor=black fontcolor=white style=filled];
+    START->""" + get_node_name("raw", "PREROUTING") + """:begin[color=blue];
     """ + get_node_name("nat", "INPUT") + """:end-> APPLICATION[color=blue];
     APPLICATION->""" + get_node_name("raw", "OUTPUT") + """:begin[color=blue];
-    """ + get_node_name("nat", "POSTROUTING") + """:end-> EGRESS[color=blue];"""
+    """ + get_node_name("nat", "POSTROUTING") + """:end-> END[color=blue];"""
 
 output += default_link()
 
