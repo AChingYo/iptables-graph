@@ -268,18 +268,19 @@ for table in all_chains:
                 else:
                     tmp_body += ' bgcolor="lightgreen"'
             tmp_body += """>""" + get_escape(" ".join(rule["rule"])) + """</td></tr>"""
-        policy = "-j " + default_chain_policy[node_name]
-        bgcolor = "white"
-        if default_chain_policy[node_name] != 'RETURN':
-            bgcolor = "lightgreen"
+        tmp_body += """
+      <tr><td port="end\""""
+        policy = default_chain_policy[node_name]
+        if policy == 'DROP':
+            tmp_body += ' bgcolor="coral"'
+        elif policy == 'ACCEPT':
+            tmp_body += ' bgcolor="lightgreen"'
         tmp_body += (
-            """
-      <tr><td port="end" bgcolor=\"""" + bgcolor + """\">"""
+            """>-j """
             + policy
             + """</td></tr>
     </table>>];
-"""
-        )
+""")
         output += tmp_body
 
 for table in all_chains:
