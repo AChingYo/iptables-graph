@@ -142,9 +142,10 @@ for line in line_list:
             "QUEUE",
             "MARK",
             "SECMARK",
-            "CONNSECMARK"
+            "CONNSECMARK",
+            "CHECKSUM"
         ]:
-            final_rule = target not in ["LOG", "MARK", "SECMARK", "CONNSECMARK"]
+            final_rule = target not in ["LOG", "MARK", "SECMARK", "CONNSECMARK", "CHECKSUM"]
             target = None
         else:
             node_name = get_node_name(current_table, target)
