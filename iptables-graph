@@ -204,7 +204,6 @@ def get_next_chain(table_name, chain_name):
         target = rules[0]["target"]
         rule = rules[0]["rule"]
         if target and len(rule) == 0:
-            del rules[0]
             tables_target[get_node_name(table_name, chain_name)] -= 1
             return get_next_chain(table_name, target)
     return chain_name
@@ -326,17 +325,27 @@ for table in all_chains:
         for i in range(len(all_chains[table][chain])):
             target = all_chains[table][chain][i]["target"]
             if target:
-                if argv.eliminate and target not in defualt_chain_list:
-                    node_name = get_node_name(table, target)
+                node_name1 = get_node_name(table, chain)
+                node_name2 = get_node_name(table, target)
+                if argv.eliminate:
                     if (
-                        node_name not in tables_target
-                        or tables_target[node_name] < 1
-                        or len(all_chains[table][target]) == 0
+                        chain not in defualt_chain_list
+                        and (
+                            node_name1 not in tables_target
+                            or tables_target[node_name1] < 1
+                            or len(all_chains[table][chain]) == 0
+                        )
+                        or target not in defualt_chain_list
+                        and (
+                            node_name2 not in tables_target
+                            or tables_target[node_name2] < 1
+                            or len(all_chains[table][target]) == 0
+                        )
                     ):
                         continue
 
-                source_node = get_node_name(table, chain) + ":" + get_port_name(i)
-                target_node = get_node_name(table, target) + ":begin"
+                source_node = node_name1 + ":" + get_port_name(i)
+                target_node = node_name2 + ":begin"
                 output += (
                     """
     """
