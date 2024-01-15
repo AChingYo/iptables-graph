@@ -124,7 +124,7 @@ def set_targets(args, targets):
     if not args:
         return
     for target in parse_line(args, ","):
-        target = target.strip()
+        target = target.strip().upper()
         if len(target) > 0:
             targets.append(target)
 
