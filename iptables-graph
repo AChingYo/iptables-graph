@@ -2,109 +2,433 @@
 import sys
 import re
 import string
+import argparse
 
-all_chains = {	'raw':	    {'PREROUTING':list(), 'OUTPUT':list()},
-        'filter':   {'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list()},
-        'nat':	    {'PREROUTING':list(), 'OUTPUT':list(), 'POSTROUTING':list()},
-        'mangle':   {'PREROUTING':list(), 'INPUT':list(), 'OUTPUT':list(), 'FORWARD':list(), 'POSTROUTING':list()}}
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-e",
+    "--eliminate",
+    help="eliminate empty/unused chain",
+    action=argparse.BooleanOptionalAction,
+)
+parser.add_argument("-f", "--final-targets", help="final targets")
+parser.add_argument("-m", "--middle-targets", help="middle targets")
+argv = parser.parse_args()
 
-defualt_chain_list = ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING']
+all_chains = {
+    "raw": {"PREROUTING": list(), "OUTPUT": list()},
+    "filter": {"INPUT": list(), "OUTPUT": list(), "FORWARD": list()},
+    "security": {"INPUT": list(), "OUTPUT": list(), "FORWARD": list()},
+    "nat": {
+        "PREROUTING": list(),
+        "INPUT": list(),
+        "OUTPUT": list(),
+        "POSTROUTING": list(),
+    },
+    "mangle": {
+        "PREROUTING": list(),
+        "INPUT": list(),
+        "OUTPUT": list(),
+        "FORWARD": list(),
+        "POSTROUTING": list(),
+    },
+}
+
+
+def get_node_name(table_name, chain_name):
+    return (
+        re.sub("[^a-zA-Z0-9]", "", table_name)
+        + "_"
+        + re.sub("[^a-zA-Z0-9]", "", chain_name)
+    )
+
+
+defualt_chain_list = ["PREROUTING", "FORWARD", "INPUT", "OUTPUT", "POSTROUTING"]
+
+default_chain_policy = {}
+for table in all_chains:
+    for chain in defualt_chain_list:
+        default_chain_policy[get_node_name(table, chain)] = "ACCEPT"
+
+endness_chain = [
+    get_node_name("raw", "PREROUTING"),
+    get_node_name("nat", ":POSTROUTING"),
+    get_node_name("nat", "INPUT"),
+    get_node_name("raw", "OUTPUT"),
+]
+
+default_middle_targets = ["LOG", "MARK", "SECMARK", "CONNSECMARK", "CHECKSUM"]
+default_final_targets = [
+    "ACCEPT",
+    "REJECT",
+    "DROP",
+    "RETURN",
+    "REDIRECT",
+    "MASQUERADE",
+    "DNAT",
+    "SNAT",
+    "DNPT",
+    "SNPT",
+    "QUEUE",
+]
+
+tables_comment = {}
+tables_target = {}
+
+
+def get_escape(text):
+    text = text.replace("&", "&amp;")
+    text = text.replace('"', "&quot;")
+    text = text.replace(">", "&gt;")
+    text = text.replace("<", "&lt;")
+    return text
+
+
+def parse_line(line, separators):
+    token_list = []
+    if not line:
+        return token_list
+    if line[0] == "#":
+        token_list.append("#")
+        token_list.append(line[1:])
+        return token_list
+    buf = []
+    qoute = False
+    for i, c in enumerate(line):
+        if qoute:
+            buf.append(c)
+            if c == '"' and line[i - 1] != "\\":
+                qoute = False
+                token_list.append("".join(buf))
+                buf.clear()
+        else:
+            if c in separators:
+                if len(buf) > 0:
+                    token_list.append("".join(buf))
+                    buf.clear()
+                continue
+            if c == '"':
+                qoute = True
+            buf.append(c)
+    if not qoute and len(buf) > 0:
+        token_list.append("".join(buf))
+    if len(token_list) > 0:
+        first = token_list[0][0]
+        if first == "*" or first == ":":
+            token_list.insert(0, first)
+            token_list[1] = token_list[1][1:]
+    return token_list
+
+
+def set_targets(args, targets):
+    if not args:
+        return
+    for target in parse_line(args, ","):
+        target = target.strip().upper()
+        if len(target) > 0:
+            targets.append(target)
+
+
+set_targets(argv.final_targets, default_final_targets)
+set_targets(argv.middle_targets, default_middle_targets)
 
 input_string = sys.stdin.read()
 line_list = input_string.splitlines()
 current_table = None
 for line in line_list:
-    token_list = line.split()
-    if token_list[0][1:] in all_chains.keys():
-        current_table = token_list[0][1:]
+    args = parse_line(line, [" "])
+    if len(args) < 1 or args[0] == "#":
         continue
-    if token_list[0] == '-A':
-        current_chain = token_list[1]
-        if current_chain not in all_chains[current_table]:
-            all_chains[current_table][current_chain] = list()
+    if args[0] == "*":
+        if args[1] in all_chains.keys():
+            current_table = args[1]
+        continue
+    if args[0] == ":":
+        node_name = get_node_name(current_table, args[1])
+        if args[2] == "-":
+            args[2] = "RETURN"
+        default_chain_policy[node_name] = args[2]
+        continue
+    if args[0] != "-A":
+        continue
+    current_chain = args[1]
+    if current_chain not in all_chains[current_table]:
+        all_chains[current_table][current_chain] = list()
 
-        rule_body = ''
-        target = ''
-        if (token_list[-2] == '-j' or token_list[-2] == '-g') and token_list[-1] not in ['RETURN', 'ACCEPT', 'DROP']:
-            target = token_list[-1]
+    i = -1
+    target = None
+    if "-j" in args:
+        i = args.index("-j") + 1
+    elif "-g" in args:
+        i = args.index("-g") + 1
+    if i > 0 and i < len(args):
+        target = args[i]
+
+    final_rule = False
+    if target:
+        if target in default_middle_targets:
+            target = None
+        elif target in default_final_targets:
+            final_rule = True
+            target = None
+        else:
             if target not in all_chains[current_table]:
                 all_chains[current_table][target] = list()
-            rule_body = ' '.join(token_list[2:])
-        else:
-            rule_body = ' '.join(token_list[2:])
+            # remove JUMP
+            if argv.eliminate:
+                del args[i-1]
+                del args[i-1]
+            node_name = get_node_name(current_table, target)
+            if node_name not in tables_target:
+                tables_target[node_name] = 0
+            tables_target[node_name] += 1
+            if node_name not in tables_comment:
+                tables_comment[node_name] = list()
+            comment = current_table + ":" + target
+            if "--comment" in args:
+                i = args.index("--comment") + 1
+                if i < len(args):
+                    tmp = args[i].replace("\\", "")
+                    i = len(tmp)
+                    if i > 0 and tmp[0] == '"' and tmp[i-1] == '"':
+                        tmp = get_escape(tmp[1 : i-1])
+                        i = len(tmp)
+                    if i > 0:
+                        if comment in tables_comment[node_name]:
+                            i = tables_comment[node_name].index(comment)
+                            del tables_comment[node_name][i]
+                        comment = tmp
+            if comment not in tables_comment[node_name]:
+                tables_comment[node_name].append(comment)
 
-        all_chains[current_table][current_chain].append({'rule_body':rule_body, 'target':target})
-        continue
-    else:
-        continue
+    all_chains[current_table][current_chain].append(
+        {"rule": args[2:], "target": target, "final": final_rule}
+    )
+    continue
 
 
-def get_node_name(table_name, chain_name):
-    return re.sub('[^a-zA-Z0-9]', '', table_name) + '_' + re.sub('[^a-zA-Z0-9]', '', chain_name)
+def get_next_chain(table_name, chain_name):
+    rules = all_chains[table_name][chain_name]
+    if len(rules) == 1:
+        target = rules[0]["target"]
+        rule = rules[0]["rule"]
+        if target and len(rule) == 0:
+            tables_target[get_node_name(table_name, chain_name)] -= 1
+            return get_next_chain(table_name, target)
+    return chain_name
+
+
+if argv.eliminate:
+    for table in all_chains:
+        for chain in all_chains[table]:
+            rules = all_chains[table][chain]
+            for i in range(len(rules)):
+                rule = rules[i]["rule"]
+                if len(rule) == 2 and rule[0] == "-j":
+                    if chain in defualt_chain_list:
+                        i += 1
+                    while i < len(rules):
+                        del rules[i]
+                    break
+                target = rules[i]["target"]
+                if target and target not in defualt_chain_list:
+                    rules[i]["target"] = get_next_chain(table, target)
+
 
 def get_port_name(rule_index):
     return "rule_" + str(rule_index)
 
-output="""digraph {
-    graph [pad="0.5", nodesep="0.5", ranksep="2"];
-    node [shape=plain]
-    rankdir=LR;
 
+output = """digraph {
+    graph [pad="0.5", nodesep="0.5", ranksep="2"];
+    node [shape=box3d]
+    rankdir=LR;
 """
 for table in all_chains:
     for chain in all_chains[table]:
+        if argv.eliminate and not chain in defualt_chain_list:
+            node_name = get_node_name(table, chain)
+            if (
+                node_name not in tables_target
+                or tables_target[node_name] < 1
+                or len(all_chains[table][chain]) == 0
+            ):
+                continue
+
         node_name = get_node_name(table, chain)
-        tmp_body = node_name + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
+        tmp_body = (
+            """
+    """
+            + node_name
+            + """ [label=<<table border="0" cellborder="1" cellspacing="0">"""
+        )
         if chain in defualt_chain_list:
-            tmp_body +="""
-  <tr><td bgcolor="red"><i>""" + chain + """</i></td></tr>
-  <tr><td port="begin" bgcolor="tomato"><i>""" + table + """</i></td></tr>"""
+            bgcolor = "tomato"
+            if node_name in endness_chain:
+                bgcolor = "lightblue"
+            tmp_body += (
+                """
+      <tr><td bgcolor=\""""
+                + bgcolor
+                + """\"><i>"""
+                + node_name.replace("_", ":")
+                + """</i></td></tr>
+      <tr><td port="begin"></td></tr>"""
+            )
         else:
-            tmp_body +="""
-  <tr><td><i>""" + chain + """</i></td></tr>
-  <tr><td port="begin"><i>""" + table + """</i></td></tr>"""
+            if not node_name in tables_comment:
+                tables_comment[node_name] = [node_name.replace("_", ":")]
+            for comment in sorted(tables_comment[node_name]):
+                tmp_body += (
+                    """
+      <tr><td bgcolor="grey"><b><i>"""
+                    + comment
+                    + """</i></b></td></tr>"""
+                )
+            tmp_body += """
+      <tr><td port="begin"></td></tr>"""
         for i in range(len(all_chains[table][chain])):
             rule = all_chains[table][chain][i]
+            empty_target = False
+            if (
+                argv.eliminate
+                and rule["target"]
+                and rule["target"] not in defualt_chain_list
+                and len(all_chains[table][rule["target"]]) == 0
+            ):
+                if len(rule["rule"]) == 0:
+                    continue
+                empty_target = True
             tmp_body += """
-  <tr><td port="""
-            tmp_body += "\"" + get_port_name(i) + "\""
-            tmp_body += """>""" + rule["rule_body"] + """</td></tr>"""
-            #tmp_body += """></td></tr>"""
+      <tr><td port="""
+            tmp_body += '"' + get_port_name(i) + '"'
+            if empty_target:
+                tmp_body += ' bgcolor="yellow"'
+            elif rule["final"]:
+                target = rule["rule"][rule["rule"].index("-j") + 1]
+                if target == "DROP" or target == "REJECT":
+                    tmp_body += ' bgcolor="coral"'
+                elif target == "RETURN":
+                    tmp_body += ' bgcolor="moccasin"'
+                else:
+                    tmp_body += ' bgcolor="lightgreen"'
+            tmp_body += """>""" + get_escape(" ".join(rule["rule"])) + """</td></tr>"""
         tmp_body += """
-  <tr><td port="end">end</td></tr>
-</table>>];
+      <tr><td port="end\""""
+        policy = default_chain_policy[node_name]
+        if policy == "DROP":
+            tmp_body += ' bgcolor="coral"'
+        elif policy == "ACCEPT":
+            tmp_body += ' bgcolor="lightgreen"'
+        tmp_body += (
+            """>-j """
+            + policy
+            + """</td></tr>
+    </table>>];
 """
+        )
         output += tmp_body
 
 for table in all_chains:
     for chain in all_chains[table]:
         for i in range(len(all_chains[table][chain])):
-            rule = all_chains[table][chain][i]
-            if rule['target']:
-                source_node = get_node_name(table, chain) + ':' + get_port_name(i)
-                target_node = get_node_name(table, rule['target']) + ':begin'
-                output += source_node + """ -> """ + target_node + """;
-"""
+            target = all_chains[table][chain][i]["target"]
+            if target:
+                node_name1 = get_node_name(table, chain)
+                node_name2 = get_node_name(table, target)
+                if argv.eliminate:
+                    if (
+                        chain not in defualt_chain_list
+                        and (
+                            node_name1 not in tables_target
+                            or tables_target[node_name1] < 1
+                            or len(all_chains[table][chain]) == 0
+                        )
+                        or target not in defualt_chain_list
+                        and (
+                            node_name2 not in tables_target
+                            or tables_target[node_name2] < 1
+                            or len(all_chains[table][target]) == 0
+                        )
+                    ):
+                        continue
+
+                source_node = node_name1 + ":" + get_port_name(i)
+                target_node = node_name2 + ":begin"
+                output += (
+                    """
+    """
+                    + source_node
+                    + """ -> """
+                    + target_node
+                    + """;"""
+                )
+
 
 def default_chain_link(src_table_name, src_chain_name, dst_table_name, dst_chain_name):
-    source_node = get_node_name(src_table_name, src_chain_name) + ':end'
-    target_node = get_node_name(dst_table_name, dst_chain_name) + ':begin'
-    return source_node + """ -> """ + target_node + """ [color=red];
-"""
+    source_node = get_node_name(src_table_name, src_chain_name)
+    color = "red"
+    if (
+        source_node in default_chain_policy
+        and default_chain_policy[source_node] != "ACCEPT"
+    ):
+        color = "grey"
+    target_node = get_node_name(dst_table_name, dst_chain_name)
+    return (
+        """
+    """
+        + source_node
+        + """:end -> """
+        + target_node
+        + """:begin [color="""
+        + color
+        + """];"""
+    )
 
-output += default_chain_link('raw',	'PREROUTING',	'mangle',   'PREROUTING')
-output += default_chain_link('mangle',	'PREROUTING',	'nat',	    'PREROUTING')
-output += default_chain_link('nat',	'PREROUTING',	'mangle',   'INPUT')
-output += default_chain_link('mangle',	'INPUT',	'filter',   'INPUT')
-output += default_chain_link('filter',	'INPUT',	'raw',	    'OUTPUT')
-output += default_chain_link('raw',	'OUTPUT',	'mangle',   'OUTPUT')
-output += default_chain_link('mangle',	'OUTPUT',	'nat',	    'OUTPUT')
-output += default_chain_link('nat',	'OUTPUT',	'filter',   'OUTPUT')
-output += default_chain_link('filter',	'OUTPUT',	'mangle',   'POSTROUTING')
-output += default_chain_link('mangle',	'POSTROUTING',	'nat',	    'POSTROUTING')
-output += default_chain_link('nat',	'PREROUTING',	'mangle',   'FORWARD')
-output += default_chain_link('mangle',	'FORWARD',	'filter',   'FORWARD')
-output += default_chain_link('filter',	'FORWARD',	'mangle',   'POSTROUTING')
+
+def default_link():
+    return (
+        """
+    START[shape=circle fillcolor=black fontcolor=white style=filled];
+    END[shape=circle fillcolor=black fontcolor=white style=filled];
+    APPLICATION[shape=circle fillcolor=black fontcolor=white style=filled];
+    START->"""
+        + get_node_name("raw", "PREROUTING")
+        + """:begin[color=blue];
+    """
+        + get_node_name("nat", "INPUT")
+        + """:end-> APPLICATION[color=blue];
+    APPLICATION->"""
+        + get_node_name("raw", "OUTPUT")
+        + """:begin[color=blue];
+    """
+        + get_node_name("nat", "POSTROUTING")
+        + """:end-> END[color=blue];"""
+    )
+
+
+output += default_link()
+
+output += default_chain_link("raw", "PREROUTING", "mangle", "PREROUTING")
+output += default_chain_link("mangle", "PREROUTING", "nat", "PREROUTING")
+
+output += default_chain_link("nat", "PREROUTING", "mangle", "INPUT")
+output += default_chain_link("mangle", "INPUT", "filter", "INPUT")
+output += default_chain_link("filter", "INPUT", "security", "INPUT")
+output += default_chain_link("security", "INPUT", "nat", "INPUT")
+
+output += default_chain_link("nat", "PREROUTING", "mangle", "FORWARD")
+output += default_chain_link("mangle", "FORWARD", "filter", "FORWARD")
+output += default_chain_link("filter", "FORWARD", "security", "FORWARD")
+
+output += default_chain_link("raw", "OUTPUT", "mangle", "OUTPUT")
+output += default_chain_link("mangle", "OUTPUT", "nat", "OUTPUT")
+output += default_chain_link("nat", "OUTPUT", "filter", "OUTPUT")
+output += default_chain_link("filter", "OUTPUT", "security", "OUTPUT")
+
+output += default_chain_link("security", "OUTPUT", "mangle", "POSTROUTING")
+output += default_chain_link("security", "FORWARD", "mangle", "POSTROUTING")
+output += default_chain_link("mangle", "POSTROUTING", "nat", "POSTROUTING")
 
 output += """
 }"""
