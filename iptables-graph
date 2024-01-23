@@ -100,12 +100,12 @@ def parse_line(line, separators):
             if c == '"' and line[i - 1] != "\\":
                 qoute = False
                 token_list.append("".join(buf))
-                buf = []
+                buf.clear()
         else:
             if c in separators:
                 if len(buf) > 0:
                     token_list.append("".join(buf))
-                    buf = []
+                    buf.clear()
                 continue
             if c == '"':
                 qoute = True
@@ -172,25 +172,34 @@ for line in line_list:
             final_rule = True
             target = None
         else:
+            if target not in all_chains[current_table]:
+                all_chains[current_table][target] = list()
+            # remove JUMP
+            if argv.eliminate:
+                del args[i-1]
+                del args[i-1]
             node_name = get_node_name(current_table, target)
             if node_name not in tables_target:
                 tables_target[node_name] = 0
             tables_target[node_name] += 1
-            # remove JUMP
-            del args[i - 1]
-            del args[i - 1]
+            if node_name not in tables_comment:
+                tables_comment[node_name] = list()
+            comment = current_table + ":" + target
             if "--comment" in args:
                 i = args.index("--comment") + 1
                 if i < len(args):
-                    comment = args[i].replace("\\", "")
-                    if node_name not in tables_comment:
-                        tables_comment[node_name] = []
-                    if len(comment) > 0:
-                        comment = get_escape(comment[1 : len(comment) - 1])
-                        if comment not in tables_comment[node_name]:
-                            tables_comment[node_name].append(comment)
-            if target not in all_chains[current_table]:
-                all_chains[current_table][target] = list()
+                    tmp = args[i].replace("\\", "")
+                    i = len(tmp)
+                    if i > 0 and tmp[0] == '"' and tmp[i-1] == '"':
+                        tmp = get_escape(tmp[1 : i-1])
+                        i = len(tmp)
+                    if i > 0:
+                        if comment in tables_comment[node_name]:
+                            i = tables_comment[node_name].index(comment)
+                            del tables_comment[node_name][i]
+                        comment = tmp
+            if comment not in tables_comment[node_name]:
+                tables_comment[node_name].append(comment)
 
     all_chains[current_table][current_chain].append(
         {"rule": args[2:], "target": target, "final": final_rule}
